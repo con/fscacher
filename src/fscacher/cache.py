@@ -1,5 +1,5 @@
 from collections import deque, namedtuple
-from functools import wraps
+from functools import partial, wraps
 import logging
 import os
 import os.path as op
@@ -67,16 +67,21 @@ class PersistentCache(object):
         except Exception as exc:
             lgr.warning(f"Failed to clear out the cache directory: {exc}")
 
-    def memoize(self, f):
+    def memoize(self, f=None, *, exclude_kwargs=None):
+        if f is None:
+            return partial(self.memoize, exclude_kwargs=exclude_kwargs)
         if self._ignore_cache:
             return f
-        return self._memory.cache(f)
+        return self._memory.cache(f, ignore=exclude_kwargs)
 
-    def memoize_path(self, f):
+    def memoize_path(self, f=None, *, exclude_kwargs=None):
+        if f is None:
+            return partial(self.memoize_path, exclude_kwargs=exclude_kwargs)
+
         # we need to actually decorate a function
         fingerprint_kwarg = "_cache_fingerprint"
 
-        @self.memoize
+        @self.memoize(exclude_kwargs=exclude_kwargs)
         @wraps(f)  # important, so .memoize correctly caches different `f`
         def fingerprinted(path, *args, **kwargs):
             _ = kwargs.pop(fingerprint_kwarg)  # discard
