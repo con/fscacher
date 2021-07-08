@@ -212,7 +212,7 @@ def test_memoize_path_dir(cache, tmp_path):
         # because distance is too short
         if time.time() - t0 < cache._min_dtime:
             raise  # if we were quick but still failed -- legit
-    assert calls[-1] == [str(path), 0, None]
+    assert calls[-1] == [path, 0, None]
 
     # but if we sleep - should memoize
     time.sleep(cache._min_dtime * 1.1)

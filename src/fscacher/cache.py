@@ -99,16 +99,17 @@ class PersistentCache(object):
         def fingerprinter(path, *args, **kwargs):
             # we need to dereference symlinks and use that path in the function
             # call signature
-            path_orig = path
-            path = op.realpath(path)
-            if path != path_orig:
-                lgr.log(5, "Dereferenced %r into %r", path_orig, path)
-            if op.isdir(path):
-                fprint = self._get_dir_fingerprint(path)
+            path_real = op.realpath(path)
+            if path_real != path:
+                lgr.log(5, "Dereferenced %r into %r", path, path_real)
+            if op.isdir(path_real):
+                fprint = self._get_dir_fingerprint(path_real)
             else:
-                fprint = self._get_file_fingerprint(path)
+                fprint = self._get_file_fingerprint(path_real)
             if fprint is None:
-                lgr.debug("Calling %s directly since no fingerprint for %r", f, path)
+                lgr.debug(
+                    "Calling %s directly since no fingerprint for %r", f, path_real
+                )
                 # just call the function -- we have no fingerprint,
                 # probably does not exist or permissions are wrong
                 ret = f(path, *args, **kwargs)
@@ -140,7 +141,7 @@ class PersistentCache(object):
             # we can't take everything, since atime can change, etc.
             # So let's take some
             s = os.stat(path, follow_symlinks=True)
-            fprint = FileFingerprint.from_stat(s)
+            fprint = FileFingerprint.from_stat(path, s)
             lgr.log(5, "Fingerprint for %s: %s", path, fprint)
             return fprint
         except Exception as exc:
@@ -148,7 +149,7 @@ class PersistentCache(object):
 
     @staticmethod
     def _get_dir_fingerprint(path):
-        fprint = DirFingerprint()
+        fprint = DirFingerprint(path)
         dirqueue = deque([path])
         try:
             while dirqueue:
@@ -159,7 +160,10 @@ class PersistentCache(object):
                             dirqueue.append(e.path)
                         else:
                             s = e.stat(follow_symlinks=True)
-                            fprint.add_file(e.path, FileFingerprint.from_stat(s))
+                            fprint.add_file(
+                                e.path,
+                                FileFingerprint.from_stat(op.realpath(e.path), s),
+                            )
         except Exception as exc:
             lgr.debug(f"Cannot fingerprint {path}: {exc}")
             return None
@@ -167,10 +171,12 @@ class PersistentCache(object):
             return fprint
 
 
-class FileFingerprint(namedtuple("FileFingerprint", "mtime_ns ctime_ns size inode")):
+class FileFingerprint(
+    namedtuple("FileFingerprint", "path mtime_ns ctime_ns size inode")
+):
     @classmethod
-    def from_stat(cls, s):
-        return cls(s.st_mtime_ns, s.st_ctime_ns, s.st_size, s.st_ino)
+    def from_stat(cls, path, s):
+        return cls(path, s.st_mtime_ns, s.st_ctime_ns, s.st_size, s.st_ino)
 
     def modified_in_window(self, min_dtime):
         return abs(time.time() - self.mtime_ns * 1e-9) < min_dtime
@@ -180,9 +186,10 @@ class FileFingerprint(namedtuple("FileFingerprint", "mtime_ns ctime_ns size inod
 
 
 class DirFingerprint:
-    def __init__(self):
+    def __init__(self, path):
         self.last_modified = None
         self.tree_fprints = {}
+        self.path = path
 
     def add_file(self, path, fprint: FileFingerprint):
         self.tree_fprints[path] = fprint
@@ -196,4 +203,4 @@ class DirFingerprint:
             return abs(time.time() - self.last_modified * 1e-9) < min_dtime
 
     def to_tuple(self):
-        return sum(sorted(self.tree_fprints.items()), ())
+        return (self.path,) + sum(sorted(self.tree_fprints.items()), ())
