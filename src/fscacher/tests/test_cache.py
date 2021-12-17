@@ -120,6 +120,9 @@ def test_memoize_path(cache, tmp_path):
     with open(path, "w") as f:
         f.write("content")
 
+    # to overcome flakiness
+    # see https://github.com/con/fscacher/pull/56
+    os.sync()
     t0 = time.time()
     try:
         # unless this computer is too slow -- there should be less than
@@ -201,6 +204,9 @@ def test_memoize_path_dir(cache, tmp_path):
     (path / "a.txt").write_text("Alpha")
     (path / "b.txt").write_text("Beta")
 
+    # to overcome flakiness
+    # see https://github.com/con/fscacher/issues/55
+    os.sync()
     t0 = time.time()
     try:
         # unless this computer is too slow -- there should be less than
