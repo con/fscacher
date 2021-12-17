@@ -1,5 +1,5 @@
 from collections import deque, namedtuple
-from functools import wraps
+from functools import partial, wraps
 from inspect import Parameter, signature
 import logging
 import os
@@ -73,7 +73,10 @@ class PersistentCache(object):
             return f
         return self._memory.cache(f)
 
-    def memoize_path(self, f):
+    def memoize_path(self, f=None, *, attrname=None):
+        if f is None:
+            return partial(self.memoize_path, attrname=attrname)
+
         # we need to actually decorate a function
         fingerprint_kwarg = "_cache_fingerprint"
 
@@ -99,6 +102,8 @@ class PersistentCache(object):
         def fingerprinter(path, *args, **kwargs):
             # we need to dereference symlinks and use that path in the function
             # call signature
+            if attrname is not None:
+                path = getattr(path, attrname)
             path_orig = path
             path = op.realpath(path)
             if path != path_orig:
