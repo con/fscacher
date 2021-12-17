@@ -36,6 +36,14 @@ def cache_tokens():
     c.clear()
 
 
+def maybe_sync():
+    # to overcome flakiness
+    # see https://github.com/con/fscacher/pull/56
+    if hasattr(os, 'sync'):
+        # Windows doesn't have sync, and who knows what else might lack it
+        os.sync()
+
+
 def test_memoize(cache):
     # Simplest testing to start with, not relying on persisting across
     # independent processes
@@ -117,6 +125,8 @@ def test_memoize_path(cache, tmp_path):
         memoread(path, 0)
     assert len(calls) == 2
 
+    maybe_sync()
+
     with open(path, "w") as f:
         f.write("content")
 
@@ -196,6 +206,8 @@ def test_memoize_path_dir(cache, tmp_path):
     with pytest.raises(IOError):
         memoread(path, 0)
     assert len(calls) == 2
+
+    maybe_sync()
 
     path.mkdir()
     (path / "a.txt").write_text("Alpha")
