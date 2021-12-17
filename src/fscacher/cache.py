@@ -68,10 +68,10 @@ class PersistentCache(object):
         except Exception as exc:
             lgr.warning(f"Failed to clear out the cache directory: {exc}")
 
-    def memoize(self, f):
+    def memoize(self, f, ignore=None):
         if self._ignore_cache:
             return f
-        return self._memory.cache(f)
+        return self._memory.cache(f, ignore=ignore)
 
     def memoize_path(self, f):
         # we need to actually decorate a function
@@ -93,7 +93,10 @@ class PersistentCache(object):
             parameters=tuple(sig.parameters.values()) + (fp_kwarg_param,)
         )
         fingerprinted.__signature__ = sig2
-        fingerprinted = self.memoize(fingerprinted)
+        # we need to ignore 'path' since we would like to dereference if symlink
+        # but then expect joblib's caching work on both original and dereferenced
+        # So we will add dereferenced path into fingerprint_kwarg
+        fingerprinted = self.memoize(fingerprinted, ignore=['path'])
 
         @wraps(f)
         def fingerprinter(path, *args, **kwargs):
