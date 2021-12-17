@@ -393,3 +393,25 @@ def test_follow_moved_symlink(cache, tmp_path):
     assert len(calls) == 1
     assert memoread(tmp_path / "subdir" / "text.txt") == content
     assert len(calls) == 1
+
+
+def test_memoize_path_nonpath_kwarg(cache, tmp_path):
+    calls = []
+
+    @cache.memoize_path
+    def memoread(filepath, arg, kwarg=None):
+        calls.append([filepath, arg, kwarg])
+        with open(filepath) as f:
+            return f.read()
+
+    path = str(tmp_path / "file.dat")
+    with open(path, "w") as f:
+        f.write("content")
+
+    time.sleep(cache._min_dtime * 1.1)
+
+    ncalls = len(calls)
+    assert memoread(arg=1, filepath=path) == "content"
+    assert len(calls) == ncalls + 1
+    assert memoread(arg=1, filepath=path) == "content"
+    assert len(calls) == ncalls + 1

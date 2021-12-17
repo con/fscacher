@@ -96,36 +96,40 @@ class PersistentCache(object):
         fingerprinted = self.memoize(fingerprinted)
 
         @wraps(f)
-        def fingerprinter(path, *args, **kwargs):
+        def fingerprinter(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            bound.apply_defaults()
+            argname, path_orig = next(iter(bound.arguments.items()))
             # we need to dereference symlinks and use that path in the function
             # call signature
-            path_orig = path
-            path = op.realpath(path)
+            path = op.realpath(path_orig)
             if path != path_orig:
                 lgr.log(5, "Dereferenced %r into %r", path_orig, path)
             if op.isdir(path):
                 fprint = self._get_dir_fingerprint(path)
             else:
                 fprint = self._get_file_fingerprint(path)
+            bound.arguments[argname] = path
             if fprint is None:
                 lgr.debug("Calling %s directly since no fingerprint for %r", f, path)
                 # just call the function -- we have no fingerprint,
                 # probably does not exist or permissions are wrong
-                ret = f(path, *args, **kwargs)
+                ret = f(*bound.args, **bound.kwargs)
             # We should still pass through if file was modified just now,
             # since that could mask out quick modifications.
             # Target use cases will not be like that.
             elif fprint.modified_in_window(self._min_dtime):
                 lgr.debug("Calling %s directly since too short for %r", f, path)
-                ret = f(path, *args, **kwargs)
+                ret = f(*bound.args, **bound.kwargs)
             else:
                 lgr.debug("Calling memoized version of %s for %s", f, path)
                 # If there is a fingerprint -- inject it into the signature
-                kwargs_ = kwargs.copy()
-                kwargs_[fingerprint_kwarg] = fprint.to_tuple() + (
+                fprint_tuple = fprint.to_tuple() + (
                     tuple(self._tokens) if self._tokens else ()
                 )
-                ret = fingerprinted(path, *args, **kwargs_)
+                ret = fingerprinted(
+                    *bound.args, **{**bound.kwargs, fingerprint_kwarg: fprint_tuple}
+                )
             lgr.log(1, "Returning value %r", ret)
             return ret
 
