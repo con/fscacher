@@ -14,10 +14,12 @@
 # ==============================================================================
 """Routines for multi-threaded i/o."""
 
-from hashlib import md5
+import logging
 import os
-import sys
 import threading
+from .util import FileFingerprint
+
+lgr = logging.getLogger(__name__)
 
 
 def walk(top, threads=60):
@@ -38,24 +40,24 @@ def walk(top, threads=60):
       threads: Size of fixed thread pool.
 
     Yields:
-      A (path, subdirs, files) tuple for each directory within top, including
-      itself. These tuples come in no particular order; however, the contents
-      of each tuple itself is sorted.
+      A (path, fingerprint) pair for each file within top.  These pairs come in
+      no particular order.
     """
     if not os.path.isdir(top):
         return
     lock = threading.Lock()
     on_input = threading.Condition(lock)
     on_output = threading.Condition(lock)
-    state = {"tasks": 1}
+    tasks = 1
     paths = [top]
     output = []
 
     def worker():
+        nonlocal tasks
         while True:
             with lock:
                 while True:
-                    if not state["tasks"]:
+                    if not tasks:
                         output.append(None)
                         on_output.notify()
                         return
@@ -65,34 +67,27 @@ def walk(top, threads=60):
                     path = paths.pop()
                     break
             try:
-                dirs = []
-                files = []
                 for item in sorted(os.listdir(path)):
                     subpath = os.path.join(path, item)
                     if os.path.isdir(subpath):
-                        dirs.append(item)
                         with lock:
-                            state["tasks"] += 1
+                            tasks += 1
                             paths.append(subpath)
                             on_input.notify()
                     else:
-                        with open(subpath, "rb") as fp:
-                            digest = md5()
-                            digest.update(fp.read())
-                        files.append((item, digest.hexdigest()))
-                with lock:
-                    output.append((path, dirs, files))
-                    on_output.notify()
-            except OSError as e:
-                print(e, file=sys.stderr)
+                        with lock:
+                            output.append((subpath, FileFingerprint.for_file(subpath)))
+                            on_output.notify()
+            except OSError:
+                lgr.exception("Error scanning directory %s", path)
             finally:
                 with lock:
-                    state["tasks"] -= 1
-                    if not state["tasks"]:
+                    tasks -= 1
+                    if not tasks:
                         on_input.notify_all()
 
     workers = [
-        threading.Thread(target=worker, name="fastio.walk %d %s" % (i, top))
+        threading.Thread(target=worker, name=f"fastio.walk {i} {top}", daemon=True)
         for i in range(threads)
     ]
     for w in workers:
@@ -106,17 +101,3 @@ def walk(top, threads=60):
             yield item
         else:
             threads -= 1
-
-
-if __name__ == "__main__":
-    loc = sys.argv[1]
-    if len(sys.argv) > 2:
-        nthreads = int(sys.argv[2])
-        gen = walk(loc, threads=nthreads)
-    else:
-        gen = walk(loc)
-    filecount = 0
-    for val in gen:
-        filecount += len(val[2])
-        print(val)
-    print(f"Total: {filecount}")
