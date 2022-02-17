@@ -11,6 +11,8 @@ from .util import DirFingerprint, FileFingerprint
 
 lgr = logging.getLogger(__name__)
 
+DEFAULT_THREADS = 60
+
 
 class PersistentCache(object):
     """Persistent cache providing @memoize and @memoize_path decorators
@@ -21,7 +23,9 @@ class PersistentCache(object):
 
     _cache_var_values = (None, "", "clear", "ignore")
 
-    def __init__(self, name=None, *, path=None, tokens=None, envvar=None):
+    def __init__(
+        self, name=None, *, path=None, tokens=None, envvar=None, walk_threads=None
+    ):
         """
         Parameters
         ----------
@@ -40,6 +44,8 @@ class PersistentCache(object):
         envvar: str, optional
          Name of the environment variable to query for cache settings; if not
          set, `FSCACHER_CACHE` is used
+        walk_threads: int, optional
+         Number of threads to use when traversing directory hierarchies
         """
         if path is None:
             dirs = appdirs.AppDirs("fscacher")
@@ -63,6 +69,7 @@ class PersistentCache(object):
             self.clear()
         self._ignore_cache = cntrl_value == "ignore"
         self._tokens = tokens
+        self._walk_threads = walk_threads or DEFAULT_THREADS
 
     def clear(self):
         try:
@@ -154,9 +161,8 @@ class PersistentCache(object):
         # and we memoize actually that function
         return fingerprinter
 
-    @staticmethod
-    def _get_dir_fingerprint(dirpath):
+    def _get_dir_fingerprint(self, dirpath):
         dprint = DirFingerprint()
-        for path, fprint in walk(dirpath):
+        for path, fprint in walk(dirpath, threads=self._walk_threads):
             dprint.add_file(path, fprint)
         return dprint
