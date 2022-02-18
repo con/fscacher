@@ -1,5 +1,6 @@
 from collections import deque, namedtuple
 from functools import wraps
+from hashlib import md5
 from inspect import Parameter, signature
 import logging
 import os
@@ -209,4 +210,7 @@ class DirFingerprint:
             return abs(time.time() - self.last_modified * 1e-9) < min_dtime
 
     def to_tuple(self):
-        return sum(sorted(self.tree_fprints.items()), ())
+        dgst = md5()
+        for fname, fprint in sorted(self.tree_fprints.items()):
+            dgst.update(ascii((fname, fprint.to_tuple())).encode("us-ascii"))
+        return (dgst.hexdigest(),)
