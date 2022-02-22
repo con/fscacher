@@ -1,32 +1,31 @@
 import os
 import os.path as op
 import platform
-import random
+import shutil
+import subprocess
 import sys
 import time
 import pytest
 from .. import PersistentCache
+from ..cache import DirFingerprint, FileFingerprint
 
 platform_system = platform.system().lower()
 on_windows = platform_system == "windows"
 
-# not doing random for now within fixtures, so they could share the same name
-_cache_name = "test-%d" % random.randint(1, 1000)
+
+@pytest.fixture(autouse=True)
+def capture_all_logs(caplog):
+    caplog.set_level(1, logger="fscacher")
 
 
 @pytest.fixture(scope="function")
-def cache():
-    c = PersistentCache(name=_cache_name)
-    yield c
-    c.clear()
+def cache(tmp_path_factory):
+    return PersistentCache(path=tmp_path_factory.mktemp("cache"))
 
 
 @pytest.fixture(scope="function")
-def cache_tokens():
-    # random so in case of parallel runs they do not "cross"
-    c = PersistentCache(name=_cache_name, tokens=["0.0.1", 1])
-    yield c
-    c.clear()
+def cache_tokens(tmp_path_factory):
+    return PersistentCache(path=tmp_path_factory.mktemp("cache"), tokens=["0.0.1", 1])
 
 
 def test_memoize(cache):
@@ -205,7 +204,7 @@ def test_memoize_path_dir(cache, tmp_path):
         # because distance is too short
         if time.time() - t0 < cache._min_dtime:
             raise  # if we were quick but still failed -- legit
-    assert calls[-1] == [str(path), 0, None]
+    assert calls[-1] == [path, 0, None]
 
     # but if we sleep - should memoize
     time.sleep(cache._min_dtime * 1.1)
@@ -241,31 +240,25 @@ def test_memoize_path_dir(cache, tmp_path):
 
 
 def test_memoize_path_persist(tmp_path):
-    from subprocess import run, PIPE
+    from subprocess import PIPE, run
 
-    cache_name = op.basename(tmp_path)
-    script = op.join(tmp_path, "script.py")
-    with open(script, "w") as f:
-        f.write(
-            f"""\
-from os.path import basename
-from fscacher import PersistentCache
-cache = PersistentCache(name="{cache_name}")
-
-@cache.memoize_path
-def func(path):
-    print("Running %s." % basename(path), end="")
-    return "DONE"
-
-print(func(r"{script}"))
-"""
-        )
-
-    cache = PersistentCache(name=cache_name)
-    cache.clear()
+    script = tmp_path / "script.py"
+    cachedir = tmp_path / "cache"
+    script.write_text(
+        "from os.path import basename\n"
+        "from fscacher import PersistentCache\n"
+        f"cache = PersistentCache(path={str(cachedir)!r})\n"
+        "\n"
+        "@cache.memoize_path\n"
+        "def func(path):\n"
+        "    print('Running %s.' % basename(path), end='')\n"
+        "    return 'DONE'\n"
+        "\n"
+        f"print(func({str(script)!r}))\n"
+    )
 
     outputs = [
-        run([sys.executable, script], stdout=PIPE, stderr=PIPE) for i in range(3)
+        run([sys.executable, str(script)], stdout=PIPE, stderr=PIPE) for i in range(3)
     ]
     print("Full outputs: %s" % repr(outputs))
     if b"File name too long" in outputs[0].stderr:
@@ -275,8 +268,6 @@ print(func(r"{script}"))
     assert outputs[0].stdout.strip().decode() == "Running script.py.DONE"
     for o in outputs[1:]:
         assert o.stdout.strip().decode() == "DONE"
-
-    cache.clear()
 
 
 def test_memoize_path_tokens(tmp_path, cache, cache_tokens):
@@ -328,7 +319,7 @@ def test_memoize_path_tokens(tmp_path, cache, cache_tokens):
     ],
 )
 def test_cache_control_envvar(
-    mocker, monkeypatch, fscacher_value, mycache_value, cleared, ignored
+    mocker, monkeypatch, fscacher_value, mycache_value, cleared, ignored, tmp_path
 ):
     if fscacher_value is not None:
         monkeypatch.setenv("FSCACHER_CACHE", fscacher_value)
@@ -339,6 +330,98 @@ def test_cache_control_envvar(
     else:
         monkeypatch.delenv("MYCACHE_CONTROL", raising=False)
     clear_spy = mocker.spy(PersistentCache, "clear")
-    c = PersistentCache(name="test-cache-control-envvar", envvar="MYCACHE_CONTROL")
+    c = PersistentCache(path=tmp_path, envvar="MYCACHE_CONTROL")
     assert clear_spy.called is cleared
     assert c._ignore_cache is ignored
+
+
+@pytest.mark.skipif(shutil.which("git-annex") is None, reason="git annex required")
+def test_follow_moved_symlink(cache, tmp_path):
+    calls = []
+
+    @cache.memoize_path
+    def memoread(path):
+        calls.append([path])
+        with open(path) as f:
+            return f.read()
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True)
+
+    content = "This is test text.\n"
+    git("init")
+    git("annex", "init")
+    (tmp_path / "file.txt").write_text(content)
+    git("annex", "add", "file.txt")
+    git("commit", "-m", "Create file")
+    assert op.islink(tmp_path / "file.txt")
+
+    assert memoread(tmp_path / "file.txt") == content
+    assert len(calls) == 1
+    assert memoread(tmp_path / "file.txt") == content
+    assert len(calls) == 1
+
+    git("mv", "file.txt", "text.txt")
+    git("commit", "-m", "Rename file")
+
+    assert memoread(tmp_path / "text.txt") == content
+    assert len(calls) == 1
+    assert memoread(tmp_path / "text.txt") == content
+    assert len(calls) == 1
+
+    (tmp_path / "subdir").mkdir()
+    git("mv", "text.txt", op.join("subdir", "text.txt"))
+    git("commit", "-m", "Move file")
+
+    assert memoread(tmp_path / "subdir" / "text.txt") == content
+    assert len(calls) == 1
+    assert memoread(tmp_path / "subdir" / "text.txt") == content
+    assert len(calls) == 1
+
+
+def test_memoize_path_nonpath_arg(cache, tmp_path):
+    calls = []
+
+    @cache.memoize_path
+    def memoread(filepath, arg, kwarg=None):
+        calls.append([filepath, arg, kwarg])
+        with open(filepath) as f:
+            return f.read()
+
+    path = str(tmp_path / "file.dat")
+    with open(path, "w") as f:
+        f.write("content")
+
+    time.sleep(cache._min_dtime * 1.1)
+
+    ncalls = len(calls)
+    assert memoread(path, 1) == "content"
+    assert len(calls) == ncalls + 1
+    assert memoread(arg=1, filepath=path) == "content"
+    assert len(calls) == ncalls + 1
+
+
+def test_dir_fingerprint_order_irrelevant(tmp_path):
+    start = time.time()
+    file1 = tmp_path / "apple.txt"
+    file1.write_text("Apple\n")
+    os.utime(file1, (start - 1, start - 1))
+    file2 = tmp_path / "banana.txt"
+    file2.write_text("This is test text.\n")
+    os.utime(file2, (start - 2, start - 2))
+    file3 = tmp_path / "coconut.txt"
+    file3.write_text("Lorem ipsum dolor sit amet, consectetur adipisicing elit\n")
+    os.utime(file3, (start - 3, start - 3))
+    df_tuples = []
+    for file_list in [
+        [file1, file2, file3],
+        [file3, file2, file1],
+        [file2, file1, file3],
+    ]:
+        dprint = DirFingerprint()
+        for f in file_list:
+            fprint = FileFingerprint.from_stat(os.stat(f))
+            dprint.add_file(f, fprint)
+        df_tuples.append(dprint.to_tuple())
+    for i in range(1, len(df_tuples)):
+        assert df_tuples[0] == df_tuples[i]

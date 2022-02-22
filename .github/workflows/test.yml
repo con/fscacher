@@ -21,7 +21,17 @@ jobs:
                     - '3.7'
                     - '3.8'
                     - '3.9'
-                    - pypy3
+                    - '3.10'
+                    - pypy-3.7
+                toxenv:
+                    - py
+                include:
+                    - os: ubuntu-latest
+                      python-version: '3.7'
+                      toxenv: py-dev
+                    - os: ubuntu-latest
+                      python-version: '3.6'
+                      toxenv: lint
         steps:
             - name: Check out repository
               uses: actions/checkout@v2
@@ -36,10 +46,24 @@ jobs:
                 python -m pip install --upgrade pip wheel
                 python -m pip install --upgrade --upgrade-strategy=eager tox
 
+            - name: Install git annex (Ubuntu)
+              if: startsWith(matrix.os, 'ubuntu')
+              run: sudo apt-get update && sudo apt-get install -y git-annex
+
+            - name: Install git annex (macOS)
+              if: startsWith(matrix.os, 'macos')
+              run: brew install git-annex
+
             - name: Run tests
+              if: matrix.toxenv == 'py'
               run: tox -e py -- --cov-report=xml
 
+            - name: Run generic tests
+              if: matrix.toxenv != 'py'
+              run: tox -e ${{ matrix.toxenv }}
+
             - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@v1
+              if: matrix.toxenv == 'py'
+              uses: codecov/codecov-action@v2
               with:
                   fail_ci_if_error: false

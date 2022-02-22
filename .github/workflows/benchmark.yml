@@ -4,7 +4,7 @@ on:
     pull_request:
 
 jobs:
-    test:
+    benchmark:
         runs-on: ubuntu-latest
         strategy:
             fail-fast: false
@@ -14,7 +14,8 @@ jobs:
                     - '3.7'
                     - '3.8'
                     - '3.9'
-                    - pypy3
+                    - '3.10'
+                    - pypy-3.7
         steps:
             - name: Check out repository
               uses: actions/checkout@v2
@@ -70,14 +71,23 @@ jobs:
                 git update-ref refs/bm/pr HEAD
                 git update-ref refs/bm/merge-target HEAD^1
 
+            - name: Determine name of Python version to pass to asv
+              run: |
+                PYTHON_VERSION="${{ matrix.python-version }}"
+                if [[ "$PYTHON_VERSION" == pypy* ]]
+                then ASV_PYTHON=pypy3
+                else ASV_PYTHON="$PYTHON_VERSION"
+                fi
+                echo "ASV_PYTHON=$ASV_PYTHON" >> "$GITHUB_ENV"
+
             - name: Run benchmarks on newest code
-              run: asv run --python ${{ matrix.python-version }} HEAD^-1
+              run: asv run --strict --show-stderr --python "$ASV_PYTHON" HEAD^-1
 
             - name: Check out previous code
               run: git checkout --force refs/bm/merge-target
 
             - name: Run benchmarks on previous code
-              run: asv run --python ${{ matrix.python-version }} HEAD^-1
+              run: asv run --strict --show-stderr --python "$ASV_PYTHON" HEAD^-1
 
             - name: Compare benchmarks on previous & newest code
               run: asv compare refs/bm/merge-target refs/bm/pr

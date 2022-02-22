@@ -45,6 +45,16 @@ Caches are stored on-disk and thus persist between Python runs.  To clear a
 given ``PersistentCache`` and erase its data store, call the ``clear()``
 method.
 
+By default, caches are stored in the user-wide cache directory, under an
+fscacher-specific folder, with each one identified by the name passed to the
+constructor (which defaults to "cache" if not specified).  To specify a
+different location, use the ``path`` argument to the constructor instead of
+passing a name:
+
+.. code:: python
+
+    cache = PersistentCache(path="/my/custom/location")
+
 If your code runs in an environment where different sets of libraries or the
 like could be used in different runs, and these make a difference to the output
 of your function, you can make the caching take them into account by passing a
