@@ -67,7 +67,7 @@ def walk(top, threads=60):
                     path = paths.pop()
                     break
             try:
-                for item in sorted(os.listdir(path)):
+                for item in os.listdir(path):
                     subpath = os.path.join(path, item)
                     if os.path.isdir(subpath):
                         with lock:
