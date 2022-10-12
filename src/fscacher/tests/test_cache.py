@@ -1,5 +1,6 @@
 import os
 import os.path as op
+from pathlib import Path
 import platform
 import shutil
 import subprocess
@@ -237,6 +238,79 @@ def test_memoize_path_dir(cache, tmp_path):
     # and if we "clear", would it still work?
     cache.clear()
     check_new_memoread(1, 14)
+
+
+def test_memoize_path_recursive_dir(cache, tmp_path):
+    calls = []
+
+    @cache.memoize_path
+    def memoread(path: Path):
+        calls.append(path)
+        file_qty = 0
+        for p in sorted(path.iterdir()):
+            if p.is_dir():
+                file_qty += memoread(p)
+            else:
+                file_qty += 1
+        return file_qty
+
+    (tmp_path / "file1.txt").touch()
+    (tmp_path / "file2.txt").touch()
+    sub1 = tmp_path / "sub1"
+    sub1.mkdir()
+    (sub1 / "file3.txt").touch()
+    (sub1 / "file4.txt").touch()
+    (sub1 / "file5.txt").touch()
+    subsub = sub1 / "subsub"
+    subsub.mkdir()
+    (subsub / "file6.txt").touch()
+    sub2 = tmp_path / "sub2"
+    sub2.mkdir()
+    (sub2 / "file7.txt").touch()
+    (sub2 / "file8.txt").touch()
+
+    time.sleep(cache._min_dtime * 1.1)
+
+    assert memoread(tmp_path) == 8
+    assert calls == [tmp_path, sub1, subsub, sub2]
+    assert memoread(tmp_path) == 8
+    assert calls == [tmp_path, sub1, subsub, sub2]
+
+    (sub2 / "file8.txt").touch()
+    time.sleep(cache._min_dtime * 1.1)
+
+    assert memoread(tmp_path) == 8
+    assert calls == [tmp_path, sub1, subsub, sub2, tmp_path, sub2]
+    assert memoread(tmp_path) == 8
+    assert calls == [tmp_path, sub1, subsub, sub2, tmp_path, sub2]
+
+    (subsub / "file9.txt").touch()
+    time.sleep(cache._min_dtime * 1.1)
+
+    assert memoread(tmp_path) == 9
+    assert calls == [
+        tmp_path,
+        sub1,
+        subsub,
+        sub2,
+        tmp_path,
+        sub2,
+        tmp_path,
+        sub1,
+        subsub,
+    ]
+    assert memoread(tmp_path) == 9
+    assert calls == [
+        tmp_path,
+        sub1,
+        subsub,
+        sub2,
+        tmp_path,
+        sub2,
+        tmp_path,
+        sub1,
+        subsub,
+    ]
 
 
 def test_memoize_path_persist(tmp_path):

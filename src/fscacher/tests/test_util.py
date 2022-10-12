@@ -1,5 +1,5 @@
 import pytest
-from ..cache import xor_bytes
+from ..util import xor_bytes
 
 
 @pytest.mark.parametrize(

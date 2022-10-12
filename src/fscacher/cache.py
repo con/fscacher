@@ -1,17 +1,17 @@
-from collections import deque, namedtuple
 from functools import wraps
-from hashlib import md5
 from inspect import Parameter, signature
 import logging
 import os
 import os.path as op
 import shutil
-import sys
-import time
 import appdirs
 import joblib
+from .fastio import walk
+from .util import DirFingerprint, FileFingerprint
 
 lgr = logging.getLogger(__name__)
+
+DEFAULT_THREADS = 60
 
 
 class PersistentCache(object):
@@ -23,7 +23,9 @@ class PersistentCache(object):
 
     _cache_var_values = (None, "", "clear", "ignore")
 
-    def __init__(self, name=None, *, path=None, tokens=None, envvar=None):
+    def __init__(
+        self, name=None, *, path=None, tokens=None, envvar=None, walk_threads=None
+    ):
         """
         Parameters
         ----------
@@ -42,6 +44,8 @@ class PersistentCache(object):
         envvar: str, optional
          Name of the environment variable to query for cache settings; if not
          set, `FSCACHER_CACHE` is used
+        walk_threads: int, optional
+         Number of threads to use when traversing directory hierarchies
         """
         if path is None:
             dirs = appdirs.AppDirs("fscacher")
@@ -65,6 +69,7 @@ class PersistentCache(object):
             self.clear()
         self._ignore_cache = cntrl_value == "ignore"
         self._tokens = tokens
+        self._walk_threads = walk_threads or DEFAULT_THREADS
 
     def clear(self):
         try:
@@ -128,7 +133,7 @@ class PersistentCache(object):
             if op.isdir(path):
                 fprint = self._get_dir_fingerprint(path)
             else:
-                fprint = self._get_file_fingerprint(path)
+                fprint = FileFingerprint.for_file(path)
             if fprint is None:
                 lgr.debug("Calling %s directly since no fingerprint for %r", f, path)
                 # just call the function -- we have no fingerprint,
@@ -156,85 +161,8 @@ class PersistentCache(object):
         # and we memoize actually that function
         return fingerprinter
 
-    @staticmethod
-    def _get_file_fingerprint(path):
-        """Simplistic generic file fingerprinting based on ctime, mtime, and size
-        """
-        try:
-            # we can't take everything, since atime can change, etc.
-            # So let's take some
-            s = os.stat(path, follow_symlinks=True)
-            fprint = FileFingerprint.from_stat(s)
-            lgr.log(5, "Fingerprint for %s: %s", path, fprint)
-            return fprint
-        except Exception as exc:
-            lgr.debug(f"Cannot fingerprint {path}: {exc}")
-
-    @staticmethod
-    def _get_dir_fingerprint(path):
-        fprint = DirFingerprint()
-        dirqueue = deque([path])
-        try:
-            while dirqueue:
-                d = dirqueue.popleft()
-                with os.scandir(d) as entries:
-                    for e in entries:
-                        if e.is_dir(follow_symlinks=True):
-                            dirqueue.append(e.path)
-                        else:
-                            s = e.stat(follow_symlinks=True)
-                            fprint.add_file(e.path, FileFingerprint.from_stat(s))
-        except Exception as exc:
-            lgr.debug(f"Cannot fingerprint {path}: {exc}")
-            return None
-        else:
-            return fprint
-
-
-class FileFingerprint(namedtuple("FileFingerprint", "mtime_ns ctime_ns size inode")):
-    @classmethod
-    def from_stat(cls, s):
-        return cls(s.st_mtime_ns, s.st_ctime_ns, s.st_size, s.st_ino)
-
-    def modified_in_window(self, min_dtime):
-        return abs(time.time() - self.mtime_ns * 1e-9) < min_dtime
-
-    def to_tuple(self):
-        return tuple(self)
-
-
-class DirFingerprint:
-    def __init__(self):
-        self.last_modified = None
-        self.hash = None
-
-    def add_file(self, path, fprint: FileFingerprint):
-        fprint_hash = md5(
-            ascii((str(path), fprint.to_tuple())).encode("us-ascii")
-        ).digest()
-        if self.hash is None:
-            self.hash = fprint_hash
-            self.last_modified = fprint.mtime_ns
-        else:
-            self.hash = xor_bytes(self.hash, fprint_hash)
-            if self.last_modified < fprint.mtime_ns:
-                self.last_modified = fprint.mtime_ns
-
-    def modified_in_window(self, min_dtime):
-        if self.last_modified is None:
-            return False
-        else:
-            return abs(time.time() - self.last_modified * 1e-9) < min_dtime
-
-    def to_tuple(self):
-        if self.hash is None:
-            return (None,)
-        else:
-            return (self.hash.hex(),)
-
-
-def xor_bytes(b1: bytes, b2: bytes) -> bytes:
-    length = max(len(b1), len(b2))
-    i1 = int.from_bytes(b1, sys.byteorder)
-    i2 = int.from_bytes(b2, sys.byteorder)
-    return (i1 ^ i2).to_bytes(length, sys.byteorder)
+    def _get_dir_fingerprint(self, dirpath):
+        dprint = DirFingerprint()
+        for path, fprint in walk(dirpath, threads=self._walk_threads):
+            dprint.add_file(path, fprint)
+        return dprint
