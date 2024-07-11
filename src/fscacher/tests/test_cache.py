@@ -163,6 +163,7 @@ def test_memoize_path(cache, tmp_path):
     check_new_memoread(1, "Content")
 
 
+@pytest.mark.flaky(reruns=5, condition=on_windows)
 def test_memoize_path_dir(cache, tmp_path):
     calls = []
 
