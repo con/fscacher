@@ -209,7 +209,7 @@ class FileFingerprint(namedtuple("FileFingerprint", "mtime_ns ctime_ns size inod
         return cls(s.st_mtime_ns, s.st_ctime_ns, s.st_size, s.st_ino)
 
     def modified_in_window(self, min_dtime):
-        return abs(time.time() - self.mtime_ns * 1e-9) < min_dtime
+        return abs(elapsed_since(self.mtime_ns * 1e-9)) < min_dtime
 
     def to_tuple(self):
         return tuple(self)
@@ -236,7 +236,7 @@ class DirFingerprint:
         if self.last_modified is None:
             return False
         else:
-            return abs(time.time() - self.last_modified * 1e-9) < min_dtime
+            return abs(elapsed_since(self.last_modified * 1e-9)) < min_dtime
 
     def to_tuple(self):
         if self.hash is None:
@@ -250,3 +250,13 @@ def xor_bytes(b1: bytes, b2: bytes) -> bytes:
     i1 = int.from_bytes(b1, sys.byteorder)
     i2 = int.from_bytes(b2, sys.byteorder)
     return (i1 ^ i2).to_bytes(length, sys.byteorder)
+
+def elapsed_since(t: float) -> float:
+    t_now = time.time()
+    dt = t_now - t
+    if dt < 0:
+        lgr.debug(
+            "Time is in the future: %f; now: %f; dt=%g",
+            t, t_now, dt
+        )
+    return dt
