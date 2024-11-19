@@ -1,3 +1,17 @@
+# 0.4.2 (Tue Nov 19 2024)
+
+#### 🧪 Tests
+
+- Log when file timestamp unexpectedly in the future + more information in the failing test_memoize_path_dir [#98](https://github.com/con/fscacher/pull/98) ([@yarikoptic](https://github.com/yarikoptic))
+- Stop testing against PyPy 3.8; retry failed `test_memoize_path_dir` on Windows [#95](https://github.com/con/fscacher/pull/95) ([@jwodder](https://github.com/jwodder))
+
+#### Authors: 2
+
+- John T. Wodder II ([@jwodder](https://github.com/jwodder))
+- Yaroslav Halchenko ([@yarikoptic](https://github.com/yarikoptic))
+
+---
+
 # 0.4.1 (Tue Jun 04 2024)
 
 #### 🐛 Bug Fix
