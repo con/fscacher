@@ -1,3 +1,15 @@
+# 0.4.3 (Tue Nov 19 2024)
+
+#### 🐛 Bug Fix
+
+- Address lint warnings and drop Python 3.8 [#99](https://github.com/con/fscacher/pull/99) ([@yarikoptic](https://github.com/yarikoptic))
+
+#### Authors: 1
+
+- Yaroslav Halchenko ([@yarikoptic](https://github.com/yarikoptic))
+
+---
+
 # 0.4.2 (Tue Nov 19 2024)
 
 #### 🧪 Tests
