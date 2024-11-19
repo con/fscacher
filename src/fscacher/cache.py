@@ -251,6 +251,7 @@ def xor_bytes(b1: bytes, b2: bytes) -> bytes:
     i2 = int.from_bytes(b2, sys.byteorder)
     return (i1 ^ i2).to_bytes(length, sys.byteorder)
 
+
 def elapsed_since(t: float) -> float:
     t_now = time.time()
     dt = t_now - t

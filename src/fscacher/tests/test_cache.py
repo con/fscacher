@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 import os
 import os.path as op
 from pathlib import Path
@@ -15,7 +16,6 @@ platform_system = platform.system().lower()
 on_windows = platform_system == "windows"
 on_pypy = platform.python_implementation().lower() == "pypy"
 
-import logging
 lgr = logging.getLogger(__name__)
 
 
@@ -213,7 +213,8 @@ def test_memoize_path_dir(cache, tmp_path):
         t_now = time.time()
         if t_now - t0 < cache._min_dtime:
             # Log more information to troubleshoot
-            lgr.error(f"Failing test with t0={t0}, t_now={t_now}, dt={t_now - t0}, min_dtime={cache._min_dtime}")
+            lgr.error(f"Failing test with t0={t0}, t_now={t_now}, "
+                      f"dt={t_now - t0}, min_dtime={cache._min_dtime}")
             for p in ("a.txt", "b.txt"):
                 lgr.error(f"   {p}: {op.getmtime(path / p)}")
             raise  # if we were quick but still failed -- legit
