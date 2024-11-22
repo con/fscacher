@@ -88,6 +88,54 @@ def test_memoize_multiple(cache):
         assert f3() == 3
 
 
+#
+# @classmethod and @staticmethod do not "decorate well enough":
+# Somehow joblib inspection of them ends up with the instances
+# of their classes and not underlying decorated methods.
+#
+
+#
+# For classmethod to be "fscached" we would need to have class
+# re-importable, thus the test class (and cache) are defined at
+# module level
+#
+_public_cache = PersistentCache(name=_cache_name)
+
+
+class _public_klass(object):
+    counter = 0
+    @_public_cache.memoize
+    # @classmethod
+    def f(cls):
+        cls.counter += 1
+        return cls.counter
+
+
+_public_klass.f = classmethod(_public_klass.f)
+
+
+def test_memoize_classmethod(cache):
+    for _ in range(3):
+        assert _public_klass.f() == 1
+    _public_cache.clear()
+
+
+def test_memoize_staticmethod(cache):
+
+    mem = []
+
+    class klass(object):
+        @cache.memoize
+        # @staticmethod
+        def f():
+            mem.append(len(mem))
+            return len(mem)
+    klass.f = staticmethod(klass.f)
+
+    for _ in range(2):
+        assert klass.f() == 1
+
+
 def test_memoize_path(cache, tmp_path):
     calls = []
 
