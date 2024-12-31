@@ -1,6 +1,5 @@
 from itertools import zip_longest
 import pytest
-
 from ..cache import xor_bytes
 
 

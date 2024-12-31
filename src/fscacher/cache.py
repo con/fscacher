@@ -6,7 +6,6 @@ import logging
 import os
 import os.path as op
 import shutil
-import sys
 import time
 import joblib
 from platformdirs import PlatformDirs
@@ -247,9 +246,11 @@ class DirFingerprint:
 
 def xor_bytes(b1: bytes, b2: bytes) -> bytes:
     length = max(len(b1), len(b2))
-    i1 = int.from_bytes(b1, sys.byteorder)
-    i2 = int.from_bytes(b2, sys.byteorder)
-    return (i1 ^ i2).to_bytes(length, sys.byteorder)
+    # force 'little' byte order to match our assumptions on how to
+    # treat bytes of different length.
+    i1 = int.from_bytes(b1, "little")
+    i2 = int.from_bytes(b2, "little")
+    return (i1 ^ i2).to_bytes(length, "little")
 
 
 def elapsed_since(t: float) -> float:
