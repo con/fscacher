@@ -1,3 +1,15 @@
+# 0.4.4 (Mon Jan 06 2025)
+
+#### 🐛 Bug Fix
+
+- BF: force "little" endianness while xor_byte [#102](https://github.com/con/fscacher/pull/102) ([@yarikoptic](https://github.com/yarikoptic))
+
+#### Authors: 1
+
+- Yaroslav Halchenko ([@yarikoptic](https://github.com/yarikoptic))
+
+---
+
 # 0.4.3 (Tue Nov 19 2024)
 
 #### 🐛 Bug Fix
