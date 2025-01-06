@@ -1,3 +1,4 @@
+from itertools import zip_longest
 import pytest
 from ..cache import xor_bytes
 
@@ -13,4 +14,6 @@ from ..cache import xor_bytes
     ],
 )
 def test_xor_bytes(b1: bytes, b2: bytes, r: bytes) -> None:
+    # test the target value assumption
+    assert r == bytes(x ^ y for x, y in zip_longest(b1, b2, fillvalue=0))
     assert xor_bytes(b1, b2) == r
