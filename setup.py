@@ -7,7 +7,7 @@ from setuptools import setup
 # therein for more information.
 sys.path.append(os.path.dirname(__file__))
 
-import versioneer
+import versioneer  # noqa: E402
 
 setup(
     version=versioneer.get_version(),
