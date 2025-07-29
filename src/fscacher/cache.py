@@ -13,7 +13,7 @@ from platformdirs import PlatformDirs
 lgr = logging.getLogger(__name__)
 
 
-class PersistentCache(object):
+class PersistentCache:
     """Persistent cache providing @memoize and @memoize_path decorators"""
 
     _min_dtime = 0.01  # min difference between now and mtime to consider
