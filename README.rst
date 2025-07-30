@@ -81,7 +81,7 @@ instead.
 
 Installation
 ============
-``fscacher`` requires Python 3.7 or higher.  Just use `pip
+``fscacher`` requires Python 3.9 or higher.  Just use `pip
 <https://pip.pypa.io>`_ for Python 3 (You have pip, right?) to install it and
 its dependencies::
 

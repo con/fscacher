@@ -213,8 +213,10 @@ def test_memoize_path_dir(cache, tmp_path):
         t_now = time.time()
         if t_now - t0 < cache._min_dtime:
             # Log more information to troubleshoot
-            lgr.error(f"Failing test with t0={t0}, t_now={t_now}, "
-                      f"dt={t_now - t0}, min_dtime={cache._min_dtime}")
+            lgr.error(
+                f"Failing test with t0={t0}, t_now={t_now}, "
+                f"dt={t_now - t0}, min_dtime={cache._min_dtime}"
+            )
             for p in ("a.txt", "b.txt"):
                 lgr.error(f"   {p}: {op.getmtime(path / p)}")
             raise  # if we were quick but still failed -- legit

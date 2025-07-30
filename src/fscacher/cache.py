@@ -13,7 +13,7 @@ from platformdirs import PlatformDirs
 lgr = logging.getLogger(__name__)
 
 
-class PersistentCache(object):
+class PersistentCache:
     """Persistent cache providing @memoize and @memoize_path decorators"""
 
     _min_dtime = 0.01  # min difference between now and mtime to consider
@@ -257,8 +257,5 @@ def elapsed_since(t: float) -> float:
     t_now = time.time()
     dt = t_now - t
     if dt < 0:
-        lgr.debug(
-            "Time is in the future: %f; now: %f; dt=%g",
-            t, t_now, dt
-        )
+        lgr.debug("Time is in the future: %f; now: %f; dt=%g", t, t_now, dt)
     return dt
