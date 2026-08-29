@@ -21,12 +21,13 @@
     // Customizable commands for building, installing, and
     // uninstalling the project. See asv.conf.json documentation.
     //
-    // "install_command": ["in-dir={env_dir} python -mpip install {wheel_file}"],
-    // "uninstall_command": ["return-code=any python -mpip uninstall -y {project}"],
-    // "build_command": [
-    //     "python setup.py build",
-    //     "PIP_NO_BUILD_ISOLATION=false python -mpip wheel --no-deps --no-index -w {build_cache_dir} {build_dir}"
-    // ],
+    // For asv 0.6.3+ compatibility, explicitly specify build commands
+    // that use the 'build' backend and ensure wheel file is created
+    "build_command": [
+        "python -m build --wheel -o {build_cache_dir} {build_dir}"
+    ],
+    "install_command": ["in-dir={env_dir} python -mpip install {wheel_file}"],
+    "uninstall_command": ["return-code=any python -mpip uninstall -y {project}"],
 
     // List of branches to benchmark. If not provided, defaults to "master"
     // (for git) or "default" (for mercurial).
