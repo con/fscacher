@@ -3,6 +3,7 @@ from hashlib import sha256
 import os
 from pathlib import Path
 import random
+import shutil
 from time import sleep, time
 from uuid import uuid4
 from morecontext import envset
@@ -36,6 +37,16 @@ class BaseCacheBenchmark(ABC):
             self.func(self.path)
         elif mode == "ignore":
             self.init_cache(ignore=True)
+
+    def teardown(self, *_args):
+        # Clean up after every setup() so that repeated runs do not exhaust
+        # space (or root directory entries) on small file systems like VFAT
+        cache = getattr(self, "cache", None)
+        if cache is not None:
+            cache.clear()
+            self.cache = None
+        if os.path.isdir(self.path):
+            shutil.rmtree(self.path)
 
     def time_cache(self, mode, *_args):
         if mode == "populate":
