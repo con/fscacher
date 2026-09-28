@@ -47,7 +47,8 @@ jobs:
                 sudo apt-get update -qq
                 sudo apt-get install dosfstools
                 image=/tmp/vfat.img
-                sudo dd if=/dev/zero "of=$image" count=500 bs=1M
+                # Increased from 500MB to 2GB to accommodate benchmarks without teardown
+                sudo dd if=/dev/zero "of=$image" count=2000 bs=1M
                 # FAT32: unlike FAT16, its root directory has no fixed entry limit
                 sudo mkfs.vfat -F 32 "$image"
                 CRIPPLEDFS_PATH=/tmp/vfat
