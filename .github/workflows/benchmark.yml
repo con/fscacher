@@ -10,11 +10,11 @@ jobs:
             fail-fast: false
             matrix:
                 python-version:
-                    - '3.9'
                     - '3.10'
                     - '3.11'
                     - '3.12'
-                    - pypy-3.9
+                    - '3.13'
+                    - '3.14'
                     - pypy-3.10
         steps:
             - name: Check out repository
@@ -45,8 +45,10 @@ jobs:
                 sudo apt-get update -qq
                 sudo apt-get install dosfstools
                 image=/tmp/vfat.img
-                sudo dd if=/dev/zero "of=$image" count=500 bs=1M
-                sudo mkfs.vfat "$image"
+                # Increased from 500MB to 2GB to accommodate benchmarks without teardown
+                sudo dd if=/dev/zero "of=$image" count=2000 bs=1M
+                # FAT32: unlike FAT16, its root directory has no fixed entry limit
+                sudo mkfs.vfat -F 32 "$image"
                 CRIPPLEDFS_PATH=/tmp/vfat
                 sudo mkdir "$CRIPPLEDFS_PATH"
                 sudo mount -o "uid=$(id -u),gid=$(id -g)" "$image" "$CRIPPLEDFS_PATH"
@@ -82,14 +84,21 @@ jobs:
             - name: Run benchmarks on newest code
               run: asv run --show-stderr --python "$ASV_PYTHON" HEAD^-1
 
-            - name: Clean out vfat mount
-              run: rm -rf /tmp/vfat/*
-
-            - name: Check out previous code
-              run: git checkout --force refs/bm/merge-target
+            - name: Remount VFAT fresh for previous code benchmarks
+              run: |
+                # Old code doesn't have teardown(), so remount fresh filesystem
+                # to avoid filling it with UUID directories
+                sudo umount /tmp/vfat
+                image=/tmp/vfat.img
+                sudo dd if=/dev/zero "of=$image" count=2000 bs=1M
+                sudo mkfs.vfat -F 32 "$image"
+                sudo mount -o "uid=$(id -u),gid=$(id -g)" "$image" /tmp/vfat
 
             - name: Run benchmarks on previous code
-              run: asv run --show-stderr --python "$ASV_PYTHON" HEAD^-1
+              run: asv run --show-stderr --python "$ASV_PYTHON" "refs/bm/merge-target^!"
+
+            - name: Clean out vfat mount after previous code
+              run: rm -rf /tmp/vfat/*
 
             - name: Compare benchmarks on previous & newest code
               run: asv compare refs/bm/merge-target refs/bm/pr
