@@ -52,14 +52,15 @@ def drop(link: Path) -> None:
         "MD5E-s7--0123.dat",
     ],
 )
-def test_annex_key_fingerprint_content_hash_backends(tmp_path, key):
+def test_annex_key_fingerprint_content_hash_backends(tmp_path, monkeypatch, key):
     link = annex_link(tmp_path, "sub/file.dat", key)
     assert annex_key_fingerprint(link) == (str(link), key)
     assert annex_key_fingerprint(str(link)) == (str(link), key)
     assert annex_key_fingerprint(os.fsencode(link)) == (str(link), key)
     assert annex_key_fingerprint(link, pair_with_path=False) == key
     # Relative paths are paired as absolute ones
-    assert annex_key_fingerprint(op.relpath(link)) == (str(link), key)
+    monkeypatch.chdir(tmp_path)
+    assert annex_key_fingerprint(op.join("sub", "file.dat")) == (str(link), key)
 
 
 @pytest.mark.parametrize(
