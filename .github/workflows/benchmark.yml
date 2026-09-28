@@ -92,6 +92,15 @@ jobs:
             - name: Check out previous code
               run: git checkout --force refs/bm/merge-target
 
+            - name: Remount VFAT fresh for previous code benchmarks
+              run: |
+                # Old code doesn't have teardown(), so remount fresh filesystem
+                sudo umount /tmp/vfat
+                image=/tmp/vfat.img
+                sudo dd if=/dev/zero "of=$image" count=2000 bs=1M
+                sudo mkfs.vfat -F 32 "$image"
+                sudo mount -o "uid=$(id -u),gid=$(id -g)" "$image" /tmp/vfat
+
             - name: Run benchmarks on previous code
               run: asv run --show-stderr --python "$ASV_PYTHON" HEAD^-1
 
