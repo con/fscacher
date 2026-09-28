@@ -573,10 +573,10 @@ def blob_fingerprint(x):
     return x.fingerprint if isinstance(x, Blob) else None
 
 
-def test_memoize_path_content_fingerprint(cache, tmp_path):
+def test_memoize_path_custom_fingerprint(cache, tmp_path):
     calls = []
 
-    @cache.memoize_path(content_fingerprint=blob_fingerprint)
+    @cache.memoize_path(custom_fingerprint=blob_fingerprint)
     def memoread(src, arg=0, kwarg=None):
         calls.append((src, arg, kwarg))
         if isinstance(src, Blob):
@@ -584,7 +584,7 @@ def test_memoize_path_content_fingerprint(cache, tmp_path):
         with open(src) as f:
             return f"{f.read()}:{arg}:{kwarg}"
 
-    # A value without a fingerprint is not cached
+    # A value without a fingerprint (nor a path) is not cached
     assert memoread(Blob("content")) == "content:0:None"
     assert memoread(Blob("content")) == "content:0:None"
     assert len(calls) == 2
@@ -603,16 +603,21 @@ def test_memoize_path_content_fingerprint(cache, tmp_path):
     assert memoread(Blob("content", "A"), 1, kwarg="q") == "content:1:q"
     assert len(calls) == 5
 
-    # Paths are still fingerprinted by stat(), whatever the content
+    # Paths, for which the callable returns None, are fingerprinted by stat()
     path = tmp_path / "file.dat"
     path.write_text("content")
     time.sleep(cache._min_dtime * 1.1)
     assert memoread(path, 1) == "content:1:None"
     assert memoread(path, 1) == "content:1:None"
     assert len(calls) == 6
+    time.sleep(cache._min_dtime * 1.1)
+    path.write_text("changed")
+    time.sleep(cache._min_dtime * 1.1)
+    assert memoread(path, 1) == "changed:1:None"
+    assert len(calls) == 7
 
 
-def test_memoize_path_content_fingerprint_tokens(tmp_path_factory):
+def test_memoize_path_custom_fingerprint_tokens(tmp_path_factory):
     calls = []
 
     def memoread(src):
@@ -622,8 +627,8 @@ def test_memoize_path_content_fingerprint_tokens(tmp_path_factory):
     path = tmp_path_factory.mktemp("cache")
     c1 = PersistentCache(path=path, tokens=["1"])
     c2 = PersistentCache(path=path, tokens=["2"])
-    m1 = c1.memoize_path(memoread, content_fingerprint=blob_fingerprint)
-    m2 = c2.memoize_path(memoread, content_fingerprint=blob_fingerprint)
+    m1 = c1.memoize_path(memoread, custom_fingerprint=blob_fingerprint)
+    m2 = c2.memoize_path(memoread, custom_fingerprint=blob_fingerprint)
     assert m1(Blob("content", "A")) == "content"
     assert m1(Blob("never read", "A")) == "content"
     assert len(calls) == 1
@@ -631,12 +636,12 @@ def test_memoize_path_content_fingerprint_tokens(tmp_path_factory):
     assert len(calls) == 2
 
 
-def test_memoize_path_content_fingerprint_ignored(monkeypatch, tmp_path):
+def test_memoize_path_custom_fingerprint_ignored(monkeypatch, tmp_path):
     monkeypatch.setenv("FSCACHER_CACHE", "ignore")
     cache = PersistentCache(path=tmp_path)
     calls = []
 
-    @cache.memoize_path(content_fingerprint=blob_fingerprint)
+    @cache.memoize_path(custom_fingerprint=blob_fingerprint)
     def memoread(src):
         calls.append(src)
         return src.content
