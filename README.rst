@@ -48,6 +48,23 @@ of ``path``, the cache is ignored.
 be a sequence of names of arguments of the decorated function that will be
 ignored for caching purposes.
 
+``memoize_path()`` also optionally takes a ``content_fingerprint`` callable,
+for resources that can vouch for their content better than a ``stat()`` can
+(e.g., objects carrying a content digest, which need not be paths at all).  It
+is called with the value of the first argument and returns either a
+fingerprint of that value's content (any picklable object, such as a digest
+string) or ``None``.  A value with a fingerprint is cached under it (plus the
+cache's tokens) instead of under its path, so any two values with equal
+fingerprints share cached results; values without one are handled as usual:
+
+.. code:: python
+
+    @cache.memoize_path(
+        content_fingerprint=lambda x: x.digest if isinstance(x, Blob) else None
+    )
+    def foo(path_or_blob, ...):
+        ...
+
 Caches are stored on-disk and thus persist between Python runs.  To clear a
 given ``PersistentCache`` and erase its data store, call the ``clear()``
 method.

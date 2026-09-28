@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from typing import Optional
 import pytest
 from .. import PersistentCache
 from ..cache import DirFingerprint, FileFingerprint
@@ -558,3 +559,88 @@ def test_memoize_path_exclude_kwargs(cache, tmp_path):
         (path, 1, "quux", "bar"),
         (path, 1, None, "foo"),
     ]
+
+
+@dataclass
+class Blob:
+    """A non-path resource that may know a fingerprint of its content"""
+
+    content: str
+    fingerprint: Optional[str] = None
+
+
+def blob_fingerprint(x):
+    return x.fingerprint if isinstance(x, Blob) else None
+
+
+def test_memoize_path_content_fingerprint(cache, tmp_path):
+    calls = []
+
+    @cache.memoize_path(content_fingerprint=blob_fingerprint)
+    def memoread(src, arg=0, kwarg=None):
+        calls.append((src, arg, kwarg))
+        if isinstance(src, Blob):
+            return f"{src.content}:{arg}:{kwarg}"
+        with open(src) as f:
+            return f"{f.read()}:{arg}:{kwarg}"
+
+    # A value without a fingerprint is not cached
+    assert memoread(Blob("content")) == "content:0:None"
+    assert memoread(Blob("content")) == "content:0:None"
+    assert len(calls) == 2
+
+    # A value with one is cached by it: a twin is served from the cache,
+    # however its other arguments are passed
+    assert memoread(Blob("content", "A"), 1) == "content:1:None"
+    assert len(calls) == 3
+    assert memoread(Blob("never read", "A"), 1) == "content:1:None"
+    assert memoread(Blob("never read", "A"), arg=1) == "content:1:None"
+    assert memoread(src=Blob("never read", "A"), arg=1) == "content:1:None"
+    assert len(calls) == 3
+
+    # The fingerprint and the other arguments are part of the key
+    assert memoread(Blob("other", "B"), 1) == "other:1:None"
+    assert memoread(Blob("content", "A"), 1, kwarg="q") == "content:1:q"
+    assert len(calls) == 5
+
+    # Paths are still fingerprinted by stat(), whatever the content
+    path = tmp_path / "file.dat"
+    path.write_text("content")
+    time.sleep(cache._min_dtime * 1.1)
+    assert memoread(path, 1) == "content:1:None"
+    assert memoread(path, 1) == "content:1:None"
+    assert len(calls) == 6
+
+
+def test_memoize_path_content_fingerprint_tokens(tmp_path_factory):
+    calls = []
+
+    def memoread(src):
+        calls.append(src)
+        return src.content
+
+    path = tmp_path_factory.mktemp("cache")
+    c1 = PersistentCache(path=path, tokens=["1"])
+    c2 = PersistentCache(path=path, tokens=["2"])
+    m1 = c1.memoize_path(memoread, content_fingerprint=blob_fingerprint)
+    m2 = c2.memoize_path(memoread, content_fingerprint=blob_fingerprint)
+    assert m1(Blob("content", "A")) == "content"
+    assert m1(Blob("never read", "A")) == "content"
+    assert len(calls) == 1
+    assert m2(Blob("content", "A")) == "content"
+    assert len(calls) == 2
+
+
+def test_memoize_path_content_fingerprint_ignored(monkeypatch, tmp_path):
+    monkeypatch.setenv("FSCACHER_CACHE", "ignore")
+    cache = PersistentCache(path=tmp_path)
+    calls = []
+
+    @cache.memoize_path(content_fingerprint=blob_fingerprint)
+    def memoread(src):
+        calls.append(src)
+        return src.content
+
+    assert memoread(Blob("content", "A")) == "content"
+    assert memoread(Blob("content", "A")) == "content"
+    assert len(calls) == 2

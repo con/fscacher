@@ -84,9 +84,32 @@ class PersistentCache:
             return f
         return self._memory.cache(f, ignore=exclude_kwargs)
 
-    def memoize_path(self, f=None, *, exclude_kwargs=None):
+    def memoize_path(self, f=None, *, exclude_kwargs=None, content_fingerprint=None):
+        """
+        Memoize a function whose first argument is a path, keyed on a
+        fingerprint of the file or directory at that path
+
+        Parameters
+        ----------
+        exclude_kwargs: list of str, optional
+         Names of arguments of the decorated function to ignore for caching
+         purposes
+        content_fingerprint: callable, optional
+         Called with the value of the first argument; it may return a
+         fingerprint of the *content* that value refers to (e.g., a content
+         digest), or `None` if it has none.  A value with a fingerprint is
+         cached under it (and the cache's tokens) instead of under a path and
+         its ``stat()``, so it need not be a path at all: two values with equal
+         fingerprints share their cached results.  The fingerprint must be
+         picklable, and equal fingerprints must imply identical content.
+         Values without one are handled as without ``content_fingerprint``.
+        """
         if f is None:
-            return partial(self.memoize_path, exclude_kwargs=exclude_kwargs)
+            return partial(
+                self.memoize_path,
+                exclude_kwargs=exclude_kwargs,
+                content_fingerprint=content_fingerprint,
+            )
         if self._ignore_cache:
             return f
 
@@ -121,6 +144,14 @@ class PersistentCache:
             + (list(exclude_kwargs) if exclude_kwargs is not None else []),
         )
 
+        def call_fingerprinted(key, args, kwargs):
+            # inject the fingerprint (and tokens) into the signature
+            kwargs_ = kwargs.copy()
+            kwargs_[fingerprint_kwarg] = key + (
+                tuple(self._tokens) if self._tokens else ()
+            )
+            return fingerprinted(*args, **kwargs_)
+
         @wraps(f)
         def fingerprinter(*args, **kwargs):
             # we need to dereference symlinks and use that path in the function
@@ -128,6 +159,19 @@ class PersistentCache:
             bound = sig.bind(*args, **kwargs)
             bound.apply_defaults()
             path_orig = bound.arguments[path_arg]
+            if content_fingerprint is not None:
+                cfprint = content_fingerprint(path_orig)
+                if cfprint is not None:
+                    lgr.debug(
+                        "Calling memoized version of %s for content fingerprint %r",
+                        f,
+                        cfprint,
+                    )
+                    # No modified_in_window() check: content cannot change
+                    # without its fingerprint changing
+                    ret = call_fingerprinted(("content", cfprint), args, kwargs)
+                    lgr.log(1, "Returning value %r", ret)
+                    return ret
             try:
                 path = op.realpath(path_orig)
             except TypeError:
@@ -154,14 +198,7 @@ class PersistentCache:
                 ret = f(*args, **kwargs)
             else:
                 lgr.debug("Calling memoized version of %s for %s", f, path)
-                # If there is a fingerprint -- inject it into the signature
-                kwargs_ = kwargs.copy()
-                kwargs_[fingerprint_kwarg] = (
-                    (path,)
-                    + fprint.to_tuple()
-                    + (tuple(self._tokens) if self._tokens else ())
-                )
-                ret = fingerprinted(*args, **kwargs_)
+                ret = call_fingerprinted((path,) + fprint.to_tuple(), args, kwargs)
             lgr.log(1, "Returning value %r", ret)
             return ret
 
