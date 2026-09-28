@@ -48,7 +48,8 @@ jobs:
                 sudo apt-get install dosfstools
                 image=/tmp/vfat.img
                 sudo dd if=/dev/zero "of=$image" count=500 bs=1M
-                sudo mkfs.vfat "$image"
+                # FAT32: unlike FAT16, its root directory has no fixed entry limit
+                sudo mkfs.vfat -F 32 "$image"
                 CRIPPLEDFS_PATH=/tmp/vfat
                 sudo mkdir "$CRIPPLEDFS_PATH"
                 sudo mount -o "uid=$(id -u),gid=$(id -g)" "$image" "$CRIPPLEDFS_PATH"
