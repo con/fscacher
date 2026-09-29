@@ -100,14 +100,6 @@ class PersistentCache:
          of the first argument, and with the path of each entry met while
          fingerprinting a directory, and returns either a fingerprint of it or
          `None` to fall back to ``stat()``.
-
-         A fingerprint must change whenever the result may change (there is
-         no "modified just now" window for it), and must be picklable and have
-         a stable ``repr()`` (e.g., a string or a tuple of strings).  Results
-         are shared between all values with equal fingerprints, wherever they
-         are: include the path in the fingerprint unless the result does not
-         depend on it.  As the value itself is not part of the cache key, it
-         need not be a path at all.
         """
         if f is None:
             return partial(
