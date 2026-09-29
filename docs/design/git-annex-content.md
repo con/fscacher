@@ -1,0 +1,124 @@
+# Custom fingerprints and git-annex content
+
+Design notes for `memoize_path(custom_fingerprint=...)` and
+`fscacher.annex_key_fingerprint`, introduced in
+[#113](https://github.com/con/fscacher/pull/113).  The docstrings and README
+only say what these are; this records why they work the way they do.
+
+## Motivation
+
+`memoize_path` keys its cache on a `stat()` of the path argument (mtime,
+ctime, size, inode).  Some resources can vouch for their content better:
+
+- A *locked* git-annex'ed file is a symlink whose target names a key; for
+  content-hash backends, the key pins the content.  It also survives the file
+  being moved, re-cloned, or its content dropped.
+- Non-path objects (e.g. dandi-cli's `Readable`s, which may stream remote
+  content) have no `stat()` at all, but may know a fingerprint of their
+  content.
+
+## `custom_fingerprint`: an alternative to `stat()`, not a second code path
+
+The callable replaces only the `stat()`-based fingerprint; everything else
+(falling back to a direct call when there is no fingerprint, injecting the
+fingerprint into the cache key, tokens) is shared.  `_get_fingerprint()`
+returns either a `CustomFingerprint` or a `PathFingerprint`, or `None`, and the
+rest of `memoize_path` does not care which.  `PathFingerprint` keys exactly as
+before, so existing caches stay valid.
+
+The contract for a callable:
+
+- **It returns `None` to fall back to `stat()`**, for anything it does not
+  recognize, including plain paths unless it fingerprints them.  It must not
+  raise for such values.
+- **It runs on every call** of the decorated function (and per entry of a
+  directory, see below), so it must be cheap.  `annex_key_fingerprint` only
+  reads the symlink; it never runs git-annex.
+- **Equal fingerprints share results, wherever they are.**  The value of the
+  path argument is excluded from the cache key, so a fingerprint must include
+  the path unless the result does not depend on it.  For the same reason the
+  value need not be a path at all.
+- **Fingerprints must be picklable with a stable `repr()`**, as joblib hashes
+  them into the key (e.g. a string or a tuple of strings).
+- **There is no "modified just now" window.**  With `stat()`, a file modified
+  within `_min_dtime` is not cached, since a quick later modification might
+  not change the fingerprint.  A custom fingerprint is trusted to change
+  whenever the result may change; the callable is responsible for that.  This
+  is only justified for fingerprints that pin the content, like hash-based
+  annex keys.
+
+## Which git-annex files are fingerprinted by key
+
+Only **locked** files: a symlink whose target looks like
+`.../annex/objects/*/*/KEY/KEY`.  The link is read with `readlink()` only.
+
+Only **content-hash backends**: `SHA1`, `SHA224`/`256`/`384`/`512`,
+`SHA3_224`/`256`/`384`/`512`, `SKEIN256`/`512`, `BLAKE2B*`/`BP*`/`S*`/`SP*`,
+and `MD5`, each with or without the `E` suffix (which adds the extension).
+Everything else falls back to `stat()`:
+
+- `WORM` keys are made of size, mtime and file name, so they do not pin the
+  content.
+- `URL` and `VURL` keys name a URL whose content may change.
+- External `X*` backends are unknown.
+
+**Unlocked files** also fall back to `stat()`: an unlocked file is a regular
+file whose key is not updated until it is re-added, so an edit would not
+change the key.  This includes every file on an *adjusted unlocked branch*,
+which git-annex uses on filesystems without usable symlinks or permissions,
+notably native Windows.  There, `annex_key_fingerprint` is a no-op.
+
+WSL behaves like Linux on its own filesystem (e.g. under `~`).  On a Windows
+drive under `/mnt/c`, git-annex is likely to treat the filesystem as crippled
+and use an adjusted branch, so the same `stat()` fallback applies.  Neither is
+tested in CI.
+
+## `pair_with_path`
+
+By default the fingerprint is `(absolute path, key)`: the path as given, not
+dereferenced (dereferencing would give the object path, identical for all
+files with the key).  Results are then only shared by files at the same path,
+which is needed whenever the result depends on the path, e.g. on the extension
+(the key's extension may differ from the file's) or on neighboring files.
+
+With `pair_with_path=False`, the fingerprint is the key alone, and results are
+shared by all files with the same content: twins in a dataset, and the same
+file across clones.  Only use it for results that depend on the content only.
+
+## Dropped content
+
+With `stat()`, a locked file whose content was dropped is a broken symlink: it
+cannot be fingerprinted, so the function is called directly every time.
+
+With the key, it is still fingerprinted, so a result cached while the content
+was present is returned after `git annex drop`.  This is useful (e.g. metadata
+of files no longer present locally) and deliberate.  A file whose content was
+never present has no cached result, so the function is called and fails as
+before.
+
+## Directories
+
+`memoize_path` fingerprints a directory argument by walking it and combining
+the `stat()` of every entry (this predates custom fingerprints).  With `stat()`
+alone, a single dropped annexed file (a broken symlink) makes the whole
+directory unfingerprintable, and the mtimes of annexed files feed the
+"modified just now" window.
+
+The walk now also consults the callable for each entry and, if it returns a
+fingerprint, uses it for that entry instead of `stat()` (and without feeding
+the window).  A tree with dropped annexed files, such as a `.zarr` in a
+dandiset, can then be cached.
+
+The callable is given the `os.DirEntry` of each entry rather than its path.  A
+`DirEntry` is path-like, so callables written for paths keep working, and it
+lets `annex_key_fingerprint` skip regular files using the file type from the
+directory listing, without a `readlink()` system call.  The cost of the walk is
+then unchanged for regular files, and for locked annexed files a `readlink()`
+replaces a `stat()` that would follow the link.
+
+**Open question.**  The walk is still O(number of entries) on every call, as
+before.  For very large trees (Zarrs with millions of chunks) a cheaper
+fingerprint would be needed, e.g. the git tree hash of a committed directory,
+and it is not yet decided whether custom fingerprints should take part in
+directory walks at all in the first release, or whether directories should be
+left to `stat()` until that is designed.
