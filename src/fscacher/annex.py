@@ -29,11 +29,14 @@ def annex_key_fingerprint(path, *, pair_with_path=True):
     so this is cheap, and a file whose content is not present (e.g., dropped)
     is still fingerprinted: cached results are then returned for it.
 
-    With ``pair_with_path`` (the default), the fingerprint is the pair of the
-    absolute path (as given, not dereferenced) and the key, so results are only
-    shared by files at the same path, as needed when they depend on the path
-    (e.g., on the extension or on neighboring files).  Without it, results are
-    shared by all files with the same key, e.g., across clones of a dataset.
+    Parameters
+    ----------
+    pair_with_path: bool, optional
+     If true (the default), the fingerprint is the pair of the absolute path
+     (as given, not dereferenced) and the key, so results are only shared by
+     files at the same path, as needed when they depend on the path (e.g., on
+     the extension or on neighboring files).  If false, results are shared by
+     all files with the same key, e.g., across clones of a dataset.
     """
     try:
         path = os.fsdecode(os.fspath(path))
