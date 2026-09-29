@@ -48,34 +48,16 @@ of ``path``, the cache is ignored.
 be a sequence of names of arguments of the decorated function that will be
 ignored for caching purposes.
 
-``memoize_path()`` also optionally takes a ``custom_fingerprint`` callable, an
-alternative to the built-in ``stat()``-based fingerprint.  It is called with the
-value of the first argument (and with the path of each entry met while
-fingerprinting a directory) and returns either a fingerprint (a picklable value
-with a stable ``repr()``, such as a string or a tuple of strings) or ``None`` to
-fall back to ``stat()``.  It runs on every call, so it must be cheap and return
-``None`` rather than raise for anything it does not recognize.  Results are
-shared between all values with equal fingerprints, and a custom fingerprint is
-trusted to change whenever the result may change (there is no "modified just
-now" window for it); the value itself need not even be a path.
-
-``fscacher.annex_key_fingerprint`` is such a callable for git-annex'ed files: it
-fingerprints a *locked* file by its key if the key's backend hashes the content
-(``SHA*``, ``SHA3_*``, ``SKEIN*``, ``BLAKE2*``, ``MD5``, with or without the
-``E`` suffix), and leaves anything else (unlocked files, ``WORM`` or ``URL``
-keys, ...) to ``stat()``.  Results then survive the file being moved, or its
-content dropped.  By default, the key is paired with the file's path; pass
-``pair_with_path=False`` to share results between all files with the same
-content, e.g. across clones, if the result does not depend on the path:
+``memoize_path()`` can also take a ``custom_fingerprint`` callable to use
+instead of ``stat()``; it returns ``None`` to fall back to ``stat()``.  For
+example, ``fscacher.annex_key_fingerprint`` fingerprints locked git-annex'ed
+files by their keys, so results survive their content being dropped:
 
 .. code:: python
 
-    from functools import partial
-    from fscacher import PersistentCache, annex_key_fingerprint
+    from fscacher import annex_key_fingerprint
 
-    @cache.memoize_path(
-        custom_fingerprint=partial(annex_key_fingerprint, pair_with_path=False)
-    )
+    @cache.memoize_path(custom_fingerprint=annex_key_fingerprint)
     def foo(path, ...):
         ...
 

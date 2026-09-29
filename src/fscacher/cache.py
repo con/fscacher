@@ -97,8 +97,8 @@ class PersistentCache:
         custom_fingerprint: callable, optional
          An alternative to the built-in ``stat()``-based fingerprint, e.g.
          `fscacher.annex.annex_key_fingerprint`.  It is called with the value
-         of the first argument, and with the path of each entry met while
-         fingerprinting a directory, and returns either a fingerprint of it or
+         of the first argument, and with the `os.DirEntry` of each entry met
+         while fingerprinting a directory, and returns either a fingerprint or
          `None` to fall back to ``stat()``.
         """
         if f is None:
@@ -222,7 +222,7 @@ class PersistentCache:
                 with os.scandir(d) as entries:
                     for e in entries:
                         custom = (
-                            custom_fingerprint(e.path)
+                            custom_fingerprint(e)
                             if custom_fingerprint is not None
                             else None
                         )

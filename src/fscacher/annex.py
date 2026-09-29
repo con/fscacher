@@ -38,6 +38,9 @@ def annex_key_fingerprint(path, *, pair_with_path=True):
      the extension or on neighboring files).  If false, results are shared by
      all files with the same key, e.g., across clones of a dataset.
     """
+    if isinstance(path, os.DirEntry) and not path.is_symlink():
+        # known from the directory listing, without a system call
+        return None
     try:
         path = os.fsdecode(os.fspath(path))
         target = os.fsdecode(os.readlink(path))

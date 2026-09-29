@@ -98,6 +98,24 @@ def test_annex_key_fingerprint_dropped(tmp_path):
     assert annex_key_fingerprint(link) == (str(link), KEY)
 
 
+def test_annex_key_fingerprint_dir_entries(tmp_path, monkeypatch):
+    link = annex_link(tmp_path, "ds/file.dat", KEY)
+    (tmp_path / "ds" / "regular.dat").write_text("content")
+    readlinks = []
+    readlink = os.readlink
+
+    def spy(path):
+        readlinks.append(os.fspath(path))
+        return readlink(path)
+
+    monkeypatch.setattr(os, "readlink", spy)
+    with os.scandir(tmp_path / "ds") as entries:
+        fprints = {e.name: annex_key_fingerprint(e) for e in entries}
+    assert fprints == {"file.dat": (str(link), KEY), "regular.dat": None}
+    # Only the symlink is read: a regular file is recognized from the listing
+    assert readlinks == [str(link)]
+
+
 def make_reader(cache, calls, **kwargs):
     @cache.memoize_path(**kwargs)
     def read(path):
