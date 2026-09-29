@@ -30,13 +30,20 @@ The contract for a callable:
 
 - **It returns `None` to fall back to `stat()`**, for anything it does not
   recognize, including plain paths unless it fingerprints them.  It must not
-  raise for such values.
-- **It runs on every call** of the decorated function, so it must be cheap.  `annex_key_fingerprint` only
-  reads the symlink; it never runs git-annex.
-- **Equal fingerprints share results, wherever they are.**  The value of the
-  path argument is excluded from the cache key, so a fingerprint must include
-  the path unless the result does not depend on it.  For the same reason the
-  value need not be a path at all.
+  raise for such values: an exception propagates, so the decorated call
+  fails.  This is deliberate, as an exception there most likely is a bug in
+  the callable, which should not silently disable caching.  (A way to say "do
+  not cache", e.g. a named `fscacher.NO_CACHE` constant, can be added if ever
+  needed.)
+- **It runs on every call** of the decorated function, so it must be cheap.
+  `annex_key_fingerprint` only reads the symlink; it never runs git-annex.
+- **Equal fingerprints share results, wherever they are.**  The path argument
+  itself is not part of the cache key: in `stat()` mode the (dereferenced) path
+  is part of the fingerprint, but a custom fingerprint is used as is.  So a
+  callable must include the path in its fingerprint unless the result does not
+  depend on it, as `annex_key_fingerprint` does by default (see
+  `pair_with_path` below).  For the same reason the value need not be a path
+  at all.
 - **Fingerprints must be picklable with a stable `repr()`**, as joblib hashes
   them into the key (e.g. a string or a tuple of strings).
 - **There is no "modified just now" window.**  With `stat()`, a file modified
@@ -79,6 +86,10 @@ dereferenced (dereferencing would give the object path, identical for all
 files with the key).  Results are then only shared by files at the same path,
 which is needed whenever the result depends on the path, e.g. on the extension
 (the key's extension may differ from the file's) or on neighboring files.
+The path is made absolute with `os.path.abspath`, which does not resolve
+symlinks (neither the file's nor its parent directories'), so the same file
+reached through different paths gets separate entries; that errs on the safe
+side.
 
 With `pair_with_path=False`, the fingerprint is the key alone, and results are
 shared by all files with the same content: twins in a dataset, and the same
