@@ -98,24 +98,6 @@ def test_annex_key_fingerprint_dropped(tmp_path):
     assert annex_key_fingerprint(link) == (str(link), KEY)
 
 
-def test_annex_key_fingerprint_dir_entries(tmp_path, monkeypatch):
-    link = annex_link(tmp_path, "ds/file.dat", KEY)
-    (tmp_path / "ds" / "regular.dat").write_text("content")
-    readlinks = []
-    readlink = os.readlink
-
-    def spy(path):
-        readlinks.append(os.fspath(path))
-        return readlink(path)
-
-    monkeypatch.setattr(os, "readlink", spy)
-    with os.scandir(tmp_path / "ds") as entries:
-        fprints = {e.name: annex_key_fingerprint(e) for e in entries}
-    assert fprints == {"file.dat": (str(link), KEY), "regular.dat": None}
-    # Only the symlink is read: a regular file is recognized from the listing
-    assert readlinks == [str(link)]
-
-
 def make_reader(cache, calls, **kwargs):
     @cache.memoize_path(**kwargs)
     def read(path):
@@ -196,8 +178,15 @@ def test_memoize_path_annex_fallback_to_stat(cache, tmp_path):
 
 
 def test_memoize_path_annex_directory(cache, tmp_path):
+    seen = []
+
+    def fingerprint(path):
+        seen.append(path)
+        return annex_key_fingerprint(path)
+
     calls = []
 
+    @cache.memoize_path(custom_fingerprint=fingerprint)
     def listdir(path):
         calls.append(str(path))
         return sorted(
@@ -206,35 +195,24 @@ def test_memoize_path_annex_directory(cache, tmp_path):
             if not p.is_dir() or p.is_symlink()
         )
 
-    with_keys = cache.memoize_path(listdir, custom_fingerprint=annex_key_fingerprint)
-    with_stat = cache.memoize_path(listdir)
     ds = tmp_path / "ds"
     # the object store lives outside of the directory, as for a .zarr in a
     # dataset
     for name in ["a.dat", "sub/b.dat"]:
         annex_link(tmp_path, f"ds/{name}", f"SHA256E-s7--{name[-5]}.dat")
-    drop(ds / "sub" / "b.dat")
     (ds / "regular.txt").write_text("regular")
     time.sleep(cache._min_dtime * 1.1)
-    expected = [("a.dat", True), ("regular.txt", True), ("sub/b.dat", False)]
-    # With stat() alone, the dropped file prevents fingerprinting the directory
-    assert with_stat(ds) == with_stat(ds) == expected
-    assert calls == [str(ds)] * 2
-    # With keys, the directory is fingerprinted and its listing cached
-    calls.clear()
-    assert with_keys(ds) == with_keys(ds) == expected
+    # The callable only sees the top-level argument, for which it returns None,
+    # so the directory is fingerprinted by stat()-ing each file, as without it
+    expected = [("a.dat", True), ("regular.txt", True), ("sub/b.dat", True)]
+    assert listdir(ds) == listdir(ds) == expected
     assert calls == [str(ds)]
-    # ... until a file changes: an annexed one gets another key ...
-    os.unlink(ds / "a.dat")
-    annex_link(tmp_path, "ds/a.dat", "SHA256E-s6--other.dat")
-    assert with_keys(ds) == expected
-    assert len(calls) == 2
-    # ... or a regular file is modified
-    time.sleep(cache._min_dtime * 1.1)
-    (ds / "regular.txt").write_text("modified")
-    time.sleep(cache._min_dtime * 1.1)
-    assert with_keys(ds) == with_keys(ds) == expected
-    assert len(calls) == 3
+    assert seen == [ds, ds]
+    # ... and thus a dropped file prevents fingerprinting the directory
+    drop(ds / "sub" / "b.dat")
+    expected[-1] = ("sub/b.dat", False)
+    assert listdir(ds) == listdir(ds) == expected
+    assert calls == [str(ds)] * 3
 
 
 @pytest.mark.skipif(shutil.which("git-annex") is None, reason="git annex required")

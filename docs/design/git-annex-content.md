@@ -31,8 +31,7 @@ The contract for a callable:
 - **It returns `None` to fall back to `stat()`**, for anything it does not
   recognize, including plain paths unless it fingerprints them.  It must not
   raise for such values.
-- **It runs on every call** of the decorated function (and per entry of a
-  directory, see below), so it must be cheap.  `annex_key_fingerprint` only
+- **It runs on every call** of the decorated function, so it must be cheap.  `annex_key_fingerprint` only
   reads the symlink; it never runs git-annex.
 - **Equal fingerprints share results, wherever they are.**  The value of the
   path argument is excluded from the cache key, so a fingerprint must include
@@ -104,21 +103,20 @@ alone, a single dropped annexed file (a broken symlink) makes the whole
 directory unfingerprintable, and the mtimes of annexed files feed the
 "modified just now" window.
 
-The walk now also consults the callable for each entry and, if it returns a
-fingerprint, uses it for that entry instead of `stat()` (and without feeding
-the window).  A tree with dropped annexed files, such as a `.zarr` in a
-dandiset, can then be cached.
+**The callable only sees the top-level argument.**  For a directory, it may
+return a fingerprint of the whole tree itself; if it returns `None` (as
+`annex_key_fingerprint` does), the directory is walked and `stat()`-ed exactly
+as before, dropped files included.  This keeps a single call site and a single
+kind of argument, so the callable stays a plain alternative to `stat()`.
 
-The callable is given the `os.DirEntry` of each entry rather than its path.  A
-`DirEntry` is path-like, so callables written for paths keep working, and it
-lets `annex_key_fingerprint` skip regular files using the file type from the
-directory listing, without a `readlink()` system call.  The cost of the walk is
-then unchanged for regular files, and for locked annexed files a `readlink()`
-replaces a `stat()` that would follow the link.
+An earlier iteration also consulted the callable for each entry met during the
+walk (passing the `os.DirEntry`, so that `annex_key_fingerprint` could skip
+regular files without a system call), so that trees with dropped annexed files
+could be cached.  It was dropped: it made the callable part of the `stat()`
+code path through a second, implicit contract, and it is better designed
+together with the question below.
 
-**Open question.**  The walk is still O(number of entries) on every call, as
-before.  For very large trees (Zarrs with millions of chunks) a cheaper
-fingerprint would be needed, e.g. the git tree hash of a committed directory,
-and it is not yet decided whether custom fingerprints should take part in
-directory walks at all in the first release, or whether directories should be
-left to `stat()` until that is designed.
+**Open question.**  The walk is O(number of entries) on every call.  For very
+large trees (Zarrs with millions of chunks, possibly with dropped chunks) a
+cheaper fingerprint of the whole tree would be needed, e.g. the git tree hash
+of a committed directory, or per-entry fingerprints within the walk as above.

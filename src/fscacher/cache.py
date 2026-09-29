@@ -97,9 +97,10 @@ class PersistentCache:
         custom_fingerprint: callable, optional
          An alternative to the built-in ``stat()``-based fingerprint, e.g.
          `fscacher.annex.annex_key_fingerprint`.  It is called with the value
-         of the first argument, and with the `os.DirEntry` of each entry met
-         while fingerprinting a directory, and returns either a fingerprint or
-         `None` to fall back to ``stat()``.
+         of the first argument only, and returns either a fingerprint or
+         `None` to fall back to ``stat()``.  For a directory, it may return a
+         fingerprint of the whole tree, or `None` to fingerprint it by
+         ``stat()``-ing each file as usual.
         """
         if f is None:
             return partial(
@@ -194,7 +195,7 @@ class PersistentCache:
         if path != value:
             lgr.log(5, "Dereferenced %r into %r", value, path)
         if op.isdir(path):
-            fprint = self._get_dir_fingerprint(path, custom_fingerprint)
+            fprint = self._get_dir_fingerprint(path)
         else:
             fprint = self._get_file_fingerprint(path)
         return None if fprint is None else PathFingerprint(path, fprint)
@@ -213,7 +214,7 @@ class PersistentCache:
             lgr.debug(f"Cannot fingerprint {path}: {exc}")
 
     @staticmethod
-    def _get_dir_fingerprint(path, custom_fingerprint=None):
+    def _get_dir_fingerprint(path):
         fprint = DirFingerprint()
         dirqueue = deque([path])
         try:
@@ -221,14 +222,7 @@ class PersistentCache:
                 d = dirqueue.popleft()
                 with os.scandir(d) as entries:
                     for e in entries:
-                        custom = (
-                            custom_fingerprint(e)
-                            if custom_fingerprint is not None
-                            else None
-                        )
-                        if custom is not None:
-                            fprint.add_custom(e.path, custom)
-                        elif e.is_dir(follow_symlinks=True):
+                        if e.is_dir(follow_symlinks=True):
                             dirqueue.append(e.path)
                         else:
                             s = e.stat(follow_symlinks=True)
@@ -287,21 +281,16 @@ class DirFingerprint:
         self.hash = None
 
     def add_file(self, path, fprint: FileFingerprint):
-        self._add_hash(
-            md5(ascii((str(path), fprint.to_tuple())).encode("us-ascii")).digest()
-        )
-        if self.last_modified is None or self.last_modified < fprint.mtime_ns:
+        fprint_hash = md5(
+            ascii((str(path), fprint.to_tuple())).encode("us-ascii")
+        ).digest()
+        if self.hash is None:
+            self.hash = fprint_hash
             self.last_modified = fprint.mtime_ns
-
-    def add_custom(self, path, value):
-        self._add_hash(
-            md5(ascii((str(path), ("custom", value))).encode("us-ascii")).digest()
-        )
-
-    def _add_hash(self, fprint_hash):
-        self.hash = (
-            fprint_hash if self.hash is None else xor_bytes(self.hash, fprint_hash)
-        )
+        else:
+            self.hash = xor_bytes(self.hash, fprint_hash)
+            if self.last_modified < fprint.mtime_ns:
+                self.last_modified = fprint.mtime_ns
 
     def modified_in_window(self, min_dtime):
         if self.last_modified is None:
