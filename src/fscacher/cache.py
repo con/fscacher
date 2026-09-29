@@ -84,9 +84,30 @@ class PersistentCache:
             return f
         return self._memory.cache(f, ignore=exclude_kwargs)
 
-    def memoize_path(self, f=None, *, exclude_kwargs=None):
+    def memoize_path(self, f=None, *, exclude_kwargs=None, custom_fingerprint=None):
+        """
+        Memoize a function whose first argument is a path, keyed on a
+        fingerprint of the file or directory at that path
+
+        Parameters
+        ----------
+        exclude_kwargs: list of str, optional
+         Names of arguments of the decorated function to ignore for caching
+         purposes
+        custom_fingerprint: callable, optional
+         An alternative to the built-in ``stat()``-based fingerprint, e.g.
+         `fscacher.annex.annex_key_fingerprint`.  It is called with the value
+         of the first argument only, and returns either a fingerprint or
+         `None` to fall back to ``stat()``.  For a directory, it may return a
+         fingerprint of the whole tree, or `None` to fingerprint it by
+         ``stat()``-ing each file as usual.
+        """
         if f is None:
-            return partial(self.memoize_path, exclude_kwargs=exclude_kwargs)
+            return partial(
+                self.memoize_path,
+                exclude_kwargs=exclude_kwargs,
+                custom_fingerprint=custom_fingerprint,
+            )
         if self._ignore_cache:
             return f
 
@@ -128,38 +149,26 @@ class PersistentCache:
             bound = sig.bind(*args, **kwargs)
             bound.apply_defaults()
             path_orig = bound.arguments[path_arg]
-            try:
-                path = op.realpath(path_orig)
-            except TypeError:
-                lgr.debug(
-                    "Calling %s directly since argument is not a path-like object", f
-                )
-                return f(*args, **kwargs)
-            if path != path_orig:
-                lgr.log(5, "Dereferenced %r into %r", path_orig, path)
-            if op.isdir(path):
-                fprint = self._get_dir_fingerprint(path)
-            else:
-                fprint = self._get_file_fingerprint(path)
+            fprint = self._get_fingerprint(path_orig, custom_fingerprint)
             if fprint is None:
-                lgr.debug("Calling %s directly since no fingerprint for %r", f, path)
-                # just call the function -- we have no fingerprint,
-                # probably does not exist or permissions are wrong
+                lgr.debug(
+                    "Calling %s directly since no fingerprint for %r", f, path_orig
+                )
+                # just call the function -- we have no fingerprint, probably
+                # not a path, does not exist, or permissions are wrong
                 ret = f(*args, **kwargs)
             # We should still pass through if file was modified just now,
             # since that could mask out quick modifications.
             # Target use cases will not be like that.
             elif fprint.modified_in_window(self._min_dtime):
-                lgr.debug("Calling %s directly since too short for %r", f, path)
+                lgr.debug("Calling %s directly since too short for %r", f, path_orig)
                 ret = f(*args, **kwargs)
             else:
-                lgr.debug("Calling memoized version of %s for %s", f, path)
+                lgr.debug("Calling memoized version of %s for %r", f, path_orig)
                 # If there is a fingerprint -- inject it into the signature
                 kwargs_ = kwargs.copy()
-                kwargs_[fingerprint_kwarg] = (
-                    (path,)
-                    + fprint.to_tuple()
-                    + (tuple(self._tokens) if self._tokens else ())
+                kwargs_[fingerprint_kwarg] = fprint.to_tuple() + (
+                    tuple(self._tokens) if self._tokens else ()
                 )
                 ret = fingerprinted(*args, **kwargs_)
             lgr.log(1, "Returning value %r", ret)
@@ -167,6 +176,29 @@ class PersistentCache:
 
         # and we memoize actually that function
         return fingerprinter
+
+    def _get_fingerprint(self, value, custom_fingerprint=None):
+        """
+        Fingerprint of ``value``: the custom one if any, else one of the file
+        or directory at its dereferenced path, or `None`
+        """
+        if custom_fingerprint is not None:
+            custom = custom_fingerprint(value)
+            if custom is not None:
+                lgr.log(5, "Custom fingerprint for %r: %r", value, custom)
+                return CustomFingerprint(custom)
+        try:
+            path = op.realpath(value)
+        except TypeError:
+            lgr.debug("Cannot fingerprint %r: not a path-like object", value)
+            return None
+        if path != value:
+            lgr.log(5, "Dereferenced %r into %r", value, path)
+        if op.isdir(path):
+            fprint = self._get_dir_fingerprint(path)
+        else:
+            fprint = self._get_file_fingerprint(path)
+        return None if fprint is None else PathFingerprint(path, fprint)
 
     @staticmethod
     def _get_file_fingerprint(path):
@@ -212,6 +244,35 @@ class FileFingerprint(namedtuple("FileFingerprint", "mtime_ns ctime_ns size inod
 
     def to_tuple(self):
         return tuple(self)
+
+
+class PathFingerprint:
+    """A fingerprint of a file or directory, together with its path"""
+
+    def __init__(self, path, fprint):
+        self.path = path
+        self.fprint = fprint
+
+    def modified_in_window(self, min_dtime):
+        return self.fprint.modified_in_window(min_dtime)
+
+    def to_tuple(self):
+        return (self.path,) + self.fprint.to_tuple()
+
+
+class CustomFingerprint:
+    """A fingerprint returned by a ``custom_fingerprint`` callable"""
+
+    def __init__(self, value):
+        self.value = value
+
+    def modified_in_window(self, min_dtime):  # noqa: U100
+        # it is up to the callable to change the fingerprint on modification
+        return False
+
+    def to_tuple(self):
+        # a path key starts with an absolute path, never with this marker
+        return ("custom", self.value)
 
 
 class DirFingerprint:

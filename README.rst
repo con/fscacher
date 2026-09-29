@@ -48,6 +48,19 @@ of ``path``, the cache is ignored.
 be a sequence of names of arguments of the decorated function that will be
 ignored for caching purposes.
 
+``memoize_path()`` can also take a ``custom_fingerprint`` callable to use
+instead of ``stat()``; it returns ``None`` to fall back to ``stat()``.  For
+example, ``fscacher.annex_key_fingerprint`` fingerprints locked git-annex'ed
+files by their keys, so results survive their content being dropped:
+
+.. code:: python
+
+    from fscacher import annex_key_fingerprint
+
+    @cache.memoize_path(custom_fingerprint=annex_key_fingerprint)
+    def foo(path, ...):
+        ...
+
 Caches are stored on-disk and thus persist between Python runs.  To clear a
 given ``PersistentCache`` and erase its data store, call the ``clear()``
 method.
