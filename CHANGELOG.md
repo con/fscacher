@@ -1,3 +1,34 @@
+# 0.5.0 (Tue Sep 29 2026)
+
+#### 🚀 Enhancement
+
+- Add custom_fingerprint to memoize_path, and a git-annex key fingerprint [#113](https://github.com/con/fscacher/pull/113) ([@CodyCBakerPhD](https://github.com/CodyCBakerPhD) [@claude](https://github.com/claude))
+
+#### 🐛 Bug Fix
+
+- Drop older pythons and add 3.14 into the mix [#106](https://github.com/con/fscacher/pull/106) ([@claude](https://github.com/claude) [@yarikoptic](https://github.com/yarikoptic))
+- Update project to Python 3.9+ and add Python 3.13 support [#103](https://github.com/con/fscacher/pull/103) ([@yarikoptic](https://github.com/yarikoptic))
+
+#### 🏠 Internal
+
+- [gh-actions](deps): Bump actions/checkout from 6 to 7 [#111](https://github.com/con/fscacher/pull/111) ([@dependabot[bot]](https://github.com/dependabot[bot]))
+- [gh-actions](deps): Bump codecov/codecov-action from 5 to 7 [#110](https://github.com/con/fscacher/pull/110) ([@dependabot[bot]](https://github.com/dependabot[bot]))
+- [gh-actions](deps): Bump actions/setup-python from 6 to 7 [#109](https://github.com/con/fscacher/pull/109) ([@dependabot[bot]](https://github.com/dependabot[bot]))
+- [gh-actions](deps): Bump actions/setup-python from 5 to 6 [#105](https://github.com/con/fscacher/pull/105) ([@dependabot[bot]](https://github.com/dependabot[bot]))
+- [gh-actions](deps): Bump actions/checkout from 5 to 6 [#107](https://github.com/con/fscacher/pull/107) ([@dependabot[bot]](https://github.com/dependabot[bot]))
+- [gh-actions](deps): Bump actions/checkout from 4 to 5 [#104](https://github.com/con/fscacher/pull/104) ([@dependabot[bot]](https://github.com/dependabot[bot]))
+- centralize testing depends in setup.cfg extra depends [#96](https://github.com/con/fscacher/pull/96) ([@yarikoptic](https://github.com/yarikoptic))
+- [gh-actions](deps): Bump codecov/codecov-action from 4 to 5 [#97](https://github.com/con/fscacher/pull/97) ([@dependabot[bot]](https://github.com/dependabot[bot]))
+
+#### Authors: 4
+
+- [@dependabot[bot]](https://github.com/dependabot[bot])
+- Claude ([@claude](https://github.com/claude))
+- Cody Baker ([@CodyCBakerPhD](https://github.com/CodyCBakerPhD))
+- Yaroslav Halchenko ([@yarikoptic](https://github.com/yarikoptic))
+
+---
+
 # 0.4.4 (Mon Jan 06 2025)
 
 #### 🐛 Bug Fix
