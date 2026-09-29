@@ -99,10 +99,7 @@ class PersistentCache:
          `fscacher.annex.annex_key_fingerprint`.  It is called with the value
          of the first argument, and with the path of each entry met while
          fingerprinting a directory, and returns either a fingerprint of it or
-         `None` to fall back to ``stat()``.  It is called on every call of the
-         decorated function, so it must be cheap, and it must return `None`
-         rather than raise for anything it does not recognize (including
-         plain paths, unless it fingerprints them).
+         `None` to fall back to ``stat()``.
 
          A fingerprint must change whenever the result may change (there is
          no "modified just now" window for it), and must be picklable and have
