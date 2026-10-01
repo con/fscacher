@@ -36,7 +36,9 @@ def annex_key_fingerprint(path, *, pair_with_path=True):
      (as given, not dereferenced) and the key, so results are only shared by
      files at the same path, as needed when they depend on the path (e.g., on
      the extension or on neighboring files).  If false, results are shared by
-     all files with the same key, e.g., across clones of a dataset.
+     all files with the same key, e.g., across clones of a dataset.  Either
+     way, only this file is fingerprinted: changes to neighboring files (e.g.,
+     sidecars) do not invalidate cached results.
     """
     try:
         path = os.fsdecode(os.fspath(path))

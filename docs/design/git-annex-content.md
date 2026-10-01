@@ -86,6 +86,9 @@ dereferenced (dereferencing would give the object path, identical for all
 files with the key).  Results are then only shared by files at the same path,
 which is needed whenever the result depends on the path, e.g. on the extension
 (the key's extension may differ from the file's) or on neighboring files.
+Pairing is not *sufficient* for the latter, though: it keeps results separate
+per location, but does not make them change when a neighbor does (see
+[Other files the function reads](#other-files-the-function-reads)).
 The path is made absolute with `os.path.abspath`, which does not resolve
 symlinks (neither the file's nor its parent directories'), so the same file
 reached through different paths gets separate entries; that errs on the safe
@@ -94,6 +97,28 @@ side.
 With `pair_with_path=False`, the fingerprint is the key alone, and results are
 shared by all files with the same content: twins in a dataset, and the same
 file across clones.  Only use it for results that depend on the content only.
+
+## Other files the function reads
+
+**Only the first argument is fingerprinted**, in `stat()` mode and with a
+custom fingerprint alike.  If the decorated function also reads other files,
+e.g. the BIDS sidecar `sub-01_bold.json` of `sub-01_bold.nii.gz`, or metadata
+inherited from parent directories, changes to those files do not change the
+cache key, so the stale result is returned.  This predates custom
+fingerprints and is not specific to git-annex; `pair_with_path` does not
+change it, as the pair `(path, key of the .nii.gz)` stays the same when only
+the sidecar changes.
+
+To have such changes noticed, either:
+
+- fold fingerprints of the relevant files into a custom fingerprint, e.g.
+  `(annex_key_fingerprint(path), *(fingerprints of the sidecars))`, keeping in
+  mind that the callable runs on every call and must stay cheap, and that it
+  must change whenever the result may (no "modified just now" window applies);
+  or
+- have the caller pass something that identifies the content of those files
+  (e.g. their keys or `stat()`s, or the parsed sidecar itself) as extra
+  arguments of the decorated function, which are part of the cache key.
 
 ## Dropped content
 
