@@ -101,6 +101,12 @@ class PersistentCache:
          `None` to fall back to ``stat()``.  For a directory, it may return a
          fingerprint of the whole tree, or `None` to fingerprint it by
          ``stat()``-ing each file as usual.
+
+        Only the first argument is fingerprinted, with or without
+        ``custom_fingerprint``: changes to other files the function reads
+        (e.g., sidecar files next to it) do not invalidate cached results.
+        Pass something identifying their content as extra arguments, or fold
+        their fingerprints into a ``custom_fingerprint``, to have them noticed.
         """
         if f is None:
             return partial(
