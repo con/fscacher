@@ -1,3 +1,7 @@
+.. image:: https://raw.githubusercontent.com/con/fscacher/master/assets/project-icon.svg
+    :width: 128
+    :alt: fscacher: a fingerprint forming a lowercase f
+
 .. image:: https://github.com/con/fscacher/workflows/Test/badge.svg?branch=master
     :target: https://github.com/con/fscacher/actions?workflow=Test
     :alt: CI Status
